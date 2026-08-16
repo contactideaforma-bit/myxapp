@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import AppShell from "@/components/AppShell";
-import Kamasutra from "@/components/Kamasutra";
+import Idees from "@/components/Idees";
 
 export const dynamic = "force-dynamic";
 
-export default async function KamasutraPage() {
+export default async function IdeesPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -14,19 +14,15 @@ export default async function KamasutraPage() {
 
   const { data: couple } = await supabase
     .from("couples")
-    .select("id, member_b, illustration_mode")
+    .select("id, member_b")
     .or(`member_a.eq.${user.id},member_b.eq.${user.id}`)
-    .maybeSingle<{ id: string; member_b: string | null; illustration_mode: string }>();
+    .maybeSingle();
 
   if (!couple || !couple.member_b) redirect("/pair");
 
   return (
     <AppShell>
-      <Kamasutra
-        coupleId={couple.id}
-        userId={user.id}
-        modeInitial={couple.illustration_mode ?? "silhouette"}
-      />
+      <Idees coupleId={couple.id} userId={user.id} />
     </AppShell>
   );
 }

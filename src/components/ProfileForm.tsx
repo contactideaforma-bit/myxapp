@@ -4,15 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Couple, Profile } from "@/lib/types";
-import { Portrait } from "./Scene";
-import {
-  assainir,
-  CARNATIONS,
-  COULEURS_CHEVEUX,
-  COIFFURES,
-  VISAGES,
-  type AvatarParams,
-} from "@/lib/avatar-engine";
 
 const EMOJIS = ["🔥", "💋", "🖤", "🌹", "🍒", "😈", "👑", "🌙", "⚡", "🥀", "💫", "🐺"];
 
@@ -35,7 +26,6 @@ export default function ProfileForm({
   const [prenom, setPrenom] = useState(moi.display_name);
   const [emoji, setEmoji] = useState(moi.emoji || "🔥");
   const [bio, setBio] = useState(moi.bio ?? "");
-  const [avatar, setAvatar] = useState<AvatarParams>(() => assainir(moi.avatar));
   const [avatarPath, setAvatarPath] = useState(moi.avatar_path ?? null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
@@ -96,11 +86,6 @@ export default function ProfileForm({
   }
 
   /* --------------------------------------------------- Enregistrements */
-  async function enregistrerAvatar(suivant: AvatarParams) {
-    setAvatar(suivant);
-    await supabase.from("profiles").update({ avatar: suivant }).eq("id", moi.id);
-  }
-
   async function enregistrerProfil() {
     setOccupe(true);
     const { error } = await supabase
@@ -252,92 +237,6 @@ export default function ProfileForm({
       </section>
 
 
-      {/* ---------------------------------------------------- AVATAR */}
-      <section className="carte space-y-4 p-5">
-        <h2 className="font-display text-xl">Mon avatar</h2>
-        <p className="text-xs leading-relaxed text-brume">
-          Il vous représente dans les 23 postures du Kâma Sûtra. Chaque réglage est
-          enregistré immédiatement.
-        </p>
-
-        <div className="flex items-center gap-4">
-          <div className="grid h-28 w-24 shrink-0 place-items-center rounded-2xl border border-bord bg-velours-clair">
-            <Portrait a={avatar} className="h-24 w-20" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="grid h-28 w-full place-items-center overflow-hidden rounded-2xl border border-bord bg-velours-clair">
-              <Portrait a={partenaire.avatar} regardeVers="gauche" className="h-24 w-20" />
-            </div>
-          </div>
-        </div>
-        <p className="-mt-2 flex gap-4 text-[10px] uppercase tracking-widest text-brume">
-          <span className="w-24 text-center">Vous</span>
-          <span className="flex-1 text-center">{partenaire.display_name}</span>
-        </p>
-
-        <Palette
-          titre="Carnation"
-          couleurs={CARNATIONS}
-          actif={avatar.carnation}
-          onChoix={(c) => enregistrerAvatar({ ...avatar, carnation: c })}
-        />
-        <Palette
-          titre="Cheveux"
-          couleurs={COULEURS_CHEVEUX}
-          actif={avatar.couleurCheveux}
-          onChoix={(c) => enregistrerAvatar({ ...avatar, couleurCheveux: c })}
-        />
-
-        <Chips
-          titre="Coiffure"
-          options={COIFFURES.map((c) => ({
-            cle: c,
-            label: { rase: "Rasé", court: "Court", carre: "Carré", long: "Long", boucle: "Bouclé", chignon: "Chignon" }[c] ?? c,
-          }))}
-          actif={avatar.cheveux}
-          onChoix={(v) => enregistrerAvatar({ ...avatar, cheveux: v })}
-        />
-        <Chips
-          titre="Expression"
-          options={VISAGES.map((v) => ({
-            cle: v,
-            label: { doux: "Doux", neutre: "Neutre", intense: "Intense" }[v] ?? v,
-          }))}
-          actif={avatar.visage}
-          onChoix={(v) => enregistrerAvatar({ ...avatar, visage: v })}
-        />
-
-        <Curseur
-          titre="Corpulence"
-          min={0.8}
-          max={1.3}
-          valeur={avatar.corpulence}
-          onFin={(v) => enregistrerAvatar({ ...avatar, corpulence: v })}
-          onGlisse={(v) => setAvatar({ ...avatar, corpulence: v })}
-        />
-        <Curseur
-          titre="Morphologie"
-          gauche="Épaules"
-          droite="Hanches"
-          min={0}
-          max={1}
-          valeur={avatar.morpho}
-          onFin={(v) => enregistrerAvatar({ ...avatar, morpho: v })}
-          onGlisse={(v) => setAvatar({ ...avatar, morpho: v })}
-        />
-
-        <button
-          onClick={() => enregistrerAvatar({ ...avatar, pilosite: !avatar.pilosite })}
-          className={`w-full rounded-xl border px-4 py-2.5 text-sm transition ${
-            avatar.pilosite
-              ? "border-bordeaux-vif bg-bordeaux/25 text-orrose"
-              : "border-bord bg-velours-clair text-brume"
-          }`}
-        >
-          {avatar.pilosite ? "✓ Barbe" : "Barbe"}
-        </button>
-      </section>
-
       {/* ---------------------------------------------------- NOUS */}
       <section className="carte space-y-4 p-5">
         <h2 className="font-display text-xl">Nous</h2>
@@ -421,111 +320,3 @@ export default function ProfileForm({
   );
 }
 
-
-function Palette({
-  titre,
-  couleurs,
-  actif,
-  onChoix,
-}: {
-  titre: string;
-  couleurs: readonly string[];
-  actif: string;
-  onChoix: (c: string) => void;
-}) {
-  return (
-    <div>
-      <p className="mb-2 text-xs uppercase tracking-widest text-brume">{titre}</p>
-      <div className="flex flex-wrap gap-2">
-        {couleurs.map((c) => (
-          <button
-            key={c}
-            onClick={() => onChoix(c)}
-            style={{ background: c }}
-            className={`h-8 w-8 rounded-full border-2 transition ${
-              actif === c ? "border-orrose" : "border-transparent"
-            }`}
-            aria-label={c}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Chips({
-  titre,
-  options,
-  actif,
-  onChoix,
-}: {
-  titre: string;
-  options: { cle: string; label: string }[];
-  actif: string;
-  onChoix: (v: string) => void;
-}) {
-  return (
-    <div>
-      <p className="mb-2 text-xs uppercase tracking-widest text-brume">{titre}</p>
-      <div className="flex flex-wrap gap-2">
-        {options.map((o) => (
-          <button
-            key={o.cle}
-            onClick={() => onChoix(o.cle)}
-            className={`rounded-full border px-3 py-1.5 text-xs transition ${
-              actif === o.cle
-                ? "border-bordeaux-vif bg-bordeaux/30 text-orrose"
-                : "border-bord text-brume"
-            }`}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Curseur({
-  titre,
-  gauche,
-  droite,
-  min,
-  max,
-  valeur,
-  onGlisse,
-  onFin,
-}: {
-  titre: string;
-  gauche?: string;
-  droite?: string;
-  min: number;
-  max: number;
-  valeur: number;
-  onGlisse: (v: number) => void;
-  onFin: (v: number) => void;
-}) {
-  return (
-    <div>
-      <p className="mb-1 flex justify-between text-xs uppercase tracking-widest text-brume">
-        <span>{titre}</span>
-        {gauche && (
-          <span className="normal-case tracking-normal opacity-70">
-            {gauche} ↔ {droite}
-          </span>
-        )}
-      </p>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={0.01}
-        value={valeur}
-        onChange={(e) => onGlisse(Number(e.target.value))}
-        onPointerUp={(e) => onFin(Number((e.target as HTMLInputElement).value))}
-        onKeyUp={(e) => onFin(Number((e.target as HTMLInputElement).value))}
-        className="w-full accent-[#A32E52]"
-      />
-    </div>
-  );
-}

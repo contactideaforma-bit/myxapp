@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Message, Profile } from "@/lib/types";
 import ImageMessage from "./ImageMessage";
 import PanicOverlay from "./PanicOverlay";
+import GifPicker from "./GifPicker";
 
 const DUREES = [
   { label: "∞", valeur: 0 },
@@ -39,6 +40,7 @@ export default function ChatRoom({
 
   const [actionSur, setActionSur] = useState<Message | null>(null);
   const [confirmerVidage, setConfirmerVidage] = useState(false);
+  const [pickerOuvert, setPickerOuvert] = useState(false);
 
   const finRef = useRef<HTMLDivElement>(null);
   const fichierRef = useRef<HTMLInputElement>(null);
@@ -202,6 +204,44 @@ export default function ChatRoom({
     setEnvoi(false);
   }
 
+  async function envoyerGiphy(url: string) {
+    setPickerOuvert(false);
+    const { data } = await supabase
+      .from("messages")
+      .insert({
+        couple_id: coupleId,
+        sender_id: userId,
+        kind: "gif",
+        body: url,
+        expires_at: calculerExpiration(),
+      })
+      .select()
+      .single();
+    if (data)
+      setMessages((prev) =>
+        prev.some((x) => x.id === data.id) ? prev : [...prev, data as Message]
+      );
+  }
+
+  async function envoyerSticker(chemin: string) {
+    setPickerOuvert(false);
+    const { data } = await supabase
+      .from("messages")
+      .insert({
+        couple_id: coupleId,
+        sender_id: userId,
+        kind: "image",
+        storage_path: chemin,
+        expires_at: calculerExpiration(),
+      })
+      .select()
+      .single();
+    if (data)
+      setMessages((prev) =>
+        prev.some((x) => x.id === data.id) ? prev : [...prev, data as Message]
+      );
+  }
+
   async function marquerOuverte(id: string) {
     await supabase.rpc("open_view_once", { p_message_id: id });
     setMessages((prev) =>
@@ -298,7 +338,15 @@ export default function ChatRoom({
                 onClick={() => estMoi && setActionSur(m)}
                 className={estMoi ? "cursor-pointer" : ""}
               >
-                {m.kind === "image" ? (
+                {m.kind === "gif" && m.body ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={m.body}
+                    alt=""
+                    draggable={false}
+                    className="max-h-64 w-56 rounded-bulle border border-bord object-cover"
+                  />
+                ) : m.kind === "image" ? (
                   <ImageMessage message={m} estMoi={estMoi} onOuvrir={marquerOuverte} />
                 ) : (
                   <div
@@ -388,6 +436,14 @@ export default function ChatRoom({
           >
             +
           </button>
+          <button
+            type="button"
+            onClick={() => setPickerOuvert(true)}
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-bord text-[10px] font-semibold tracking-wider text-orrose transition hover:border-bordeaux-vif"
+            title="GIF et bibliothèque"
+          >
+            GIF
+          </button>
 
           <textarea
             className="champ max-h-32 min-h-[44px] flex-1 resize-none py-3"
@@ -416,6 +472,16 @@ export default function ChatRoom({
           </button>
         </form>
       </footer>
+
+      {pickerOuvert && (
+        <GifPicker
+          coupleId={coupleId}
+          userId={userId}
+          onGiphy={envoyerGiphy}
+          onSticker={envoyerSticker}
+          onFermer={() => setPickerOuvert(false)}
+        />
+      )}
 
       {/* ---------------------------------------- Actions sur un message */}
       {actionSur && (

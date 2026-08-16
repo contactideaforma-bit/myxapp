@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import Scene from "./Scene";
-import type { AvatarParams } from "@/lib/avatar-engine";
+
 
 export type PositionDB = {
   key: string;
@@ -66,14 +65,10 @@ export default function Kamasutra({
   coupleId,
   userId,
   modeInitial,
-  avatarA,
-  avatarB,
 }: {
   coupleId: string;
   userId: string;
   modeInitial: string;
-  avatarA?: Partial<AvatarParams> | null;
-  avatarB?: Partial<AvatarParams> | null;
 }) {
   const [supabase] = useState(() => createClient());
 
@@ -210,9 +205,15 @@ export default function Kamasutra({
       const url = p.image_path ? urls[p.image_path] : null;
       if (url) return <Illustration src={url} className={classe} />;
     }
-    // 3. sinon vos avatars, joues dans la posture
+    // 3. sinon une carte sobre : pas de dessin de remplacement
     return (
-      <Scene pose={p.figure ?? p.key} a={avatarA} b={avatarB} className={classe} />
+      <div
+        className={`relative grid place-items-center overflow-hidden bg-gradient-to-br from-velours-clair to-nuit ${classe}`}
+      >
+        <span className="px-3 text-center font-display text-sm leading-tight text-brume">
+          {p.nom}
+        </span>
+      </div>
     );
   };
 

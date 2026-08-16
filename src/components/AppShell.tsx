@@ -8,6 +8,7 @@ const ONGLETS = [
   { href: "/galerie", label: "Galerie", icone: "image" },
   { href: "/kamasutra", label: "Positions", icone: "flamme" },
   { href: "/jeux", label: "Jeux", icone: "de" },
+  { href: "/idees", label: "Idées", icone: "etincelle" },
   { href: "/profil", label: "Profil", icone: "profil" },
 ] as const;
 
@@ -51,6 +52,13 @@ function Icone({ nom, actif }: { nom: string; actif: boolean }) {
           <circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none" />
           <circle cx="15.5" cy="15.5" r="1.1" fill="currentColor" stroke="none" />
           <circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "etincelle":
+      return (
+        <svg {...commun}>
+          <path d="M12 3v4M12 17v4M4.5 12h-1.5M21 12h-1.5M6.5 6.5 5.4 5.4M18.6 18.6l-1.1-1.1M6.5 17.5 5.4 18.6M18.6 5.4l-1.1 1.1" />
+          <circle cx="12" cy="12" r="3.6" />
         </svg>
       );
     default:
