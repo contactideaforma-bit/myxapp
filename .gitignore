@@ -11,3 +11,6 @@ npm-debug.log*
 .vercel
 next-env.d.ts
 tsconfig.tsbuildinfo
+
+# Residus du montage de fichiers
+.fuse_hidden*
