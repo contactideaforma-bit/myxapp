@@ -37,6 +37,9 @@ export default function ChatRoom({
   const [discret, setDiscret] = useState(false);
   const [maintenant, setMaintenant] = useState(() => Date.now());
 
+  const [actionSur, setActionSur] = useState<Message | null>(null);
+  const [confirmerVidage, setConfirmerVidage] = useState(false);
+
   const finRef = useRef<HTMLDivElement>(null);
   const fichierRef = useRef<HTMLInputElement>(null);
   const canalRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -62,12 +65,7 @@ export default function ChatRoom({
       .channel(`chat-${coupleId}`, { config: { broadcast: { self: false } } })
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `couple_id=eq.${coupleId}`,
-        },
+        { event: "INSERT", schema: "public", table: "messages", filter: `couple_id=eq.${coupleId}` },
         (payload) => {
           const m = payload.new as Message;
           setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
@@ -79,12 +77,7 @@ export default function ChatRoom({
       )
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "messages",
-          filter: `couple_id=eq.${coupleId}`,
-        },
+        { event: "UPDATE", schema: "public", table: "messages", filter: `couple_id=eq.${coupleId}` },
         (payload) => {
           const m = payload.new as Message;
           setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
@@ -92,14 +85,10 @@ export default function ChatRoom({
       )
       .on(
         "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "messages",
-          filter: `couple_id=eq.${coupleId}`,
-        },
+        { event: "DELETE", schema: "public", table: "messages" },
         (payload) => {
-          const ancien = payload.old as { id: string };
+          const ancien = payload.old as Partial<Message>;
+          if (!ancien?.id) return;
           setMessages((prev) => prev.filter((x) => x.id !== ancien.id));
         }
       )
@@ -145,11 +134,7 @@ export default function ChatRoom({
     const now = Date.now();
     if (now - dernierTypingRef.current < 1500) return;
     dernierTypingRef.current = now;
-    canalRef.current?.send({
-      type: "broadcast",
-      event: "typing",
-      payload: { from: userId },
-    });
+    canalRef.current?.send({ type: "broadcast", event: "typing", payload: { from: userId } });
   }, [userId]);
 
   function calculerExpiration() {
@@ -224,6 +209,25 @@ export default function ChatRoom({
     );
   }
 
+  async function supprimer(m: Message) {
+    setActionSur(null);
+    setMessages((prev) => prev.filter((x) => x.id !== m.id));
+    if (m.kind === "image" && m.storage_path) {
+      await supabase.storage.from("intimate").remove([m.storage_path]);
+    }
+    await supabase.from("messages").delete().eq("id", m.id);
+  }
+
+  async function viderConversation() {
+    setConfirmerVidage(false);
+    const chemins = messages
+      .filter((m) => m.kind === "image" && m.storage_path)
+      .map((m) => m.storage_path as string);
+    setMessages([]);
+    if (chemins.length) await supabase.storage.from("intimate").remove(chemins);
+    await supabase.rpc("clear_conversation");
+  }
+
   async function deconnexion() {
     await supabase.auth.signOut();
     router.replace("/login");
@@ -235,26 +239,29 @@ export default function ChatRoom({
   return (
     <div className="flex h-full flex-col">
       {/* EN-TÊTE */}
-      <header className="flex items-center gap-3 border-b border-bord bg-velours/80 px-4 py-3 backdrop-blur">
+      <header className="flex shrink-0 items-center gap-3 border-b border-bord bg-velours/80 px-4 py-3 backdrop-blur">
         <div className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-bordeaux to-bordeaux-vif text-lg">
           {partner.emoji || "🔥"}
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate font-display text-lg leading-tight">{partner.display_name}</p>
           <p className="text-xs text-brume">
-            {partenaireEcrit ? (
-              <span className="text-orrose">écrit…</span>
-            ) : (
-              "Lié·e·s"
-            )}
+            {partenaireEcrit ? <span className="text-orrose">écrit…</span> : "Lié·e·s"}
           </p>
         </div>
+        <button
+          onClick={() => setConfirmerVidage(true)}
+          title="Vider la conversation"
+          className="rounded-lg border border-bord px-2.5 py-1.5 text-xs text-brume transition hover:border-bordeaux-vif"
+        >
+          🗑
+        </button>
         <button
           onClick={() => setDiscret(true)}
           title="Mode discret (Échap)"
           className="rounded-lg border border-bord px-3 py-1.5 text-xs text-brume transition hover:border-bordeaux-vif hover:text-orrose"
         >
-          👁️ Discret
+          👁️
         </button>
         <button
           onClick={deconnexion}
@@ -266,7 +273,7 @@ export default function ChatRoom({
       </header>
 
       {/* FIL */}
-      <main className="flex-1 space-y-3 overflow-y-auto px-4 py-6">
+      <main className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-6">
         {visibles.length === 0 && (
           <div className="mx-auto mt-16 max-w-xs text-center">
             <p className="font-display text-2xl text-orrose">Le silence…</p>
@@ -287,21 +294,26 @@ export default function ChatRoom({
               key={m.id}
               className={`anim-monte flex flex-col ${estMoi ? "items-end" : "items-start"}`}
             >
-              {m.kind === "image" ? (
-                <ImageMessage message={m} estMoi={estMoi} onOuvrir={marquerOuverte} />
-              ) : (
-                <div
-                  className={`max-w-[80%] whitespace-pre-wrap break-words rounded-bulle px-4 py-2.5 text-[15px] leading-relaxed ${
-                    estMoi
-                      ? "bg-gradient-to-br from-bordeaux to-bordeaux-vif text-white"
-                      : "border border-bord bg-velours-clair text-champagne"
-                  }`}
-                >
-                  {m.body}
-                </div>
-              )}
+              <div
+                onClick={() => estMoi && setActionSur(m)}
+                className={estMoi ? "cursor-pointer" : ""}
+              >
+                {m.kind === "image" ? (
+                  <ImageMessage message={m} estMoi={estMoi} onOuvrir={marquerOuverte} />
+                ) : (
+                  <div
+                    className={`max-w-[80%] whitespace-pre-wrap break-words rounded-bulle px-4 py-2.5 text-[15px] leading-relaxed ${
+                      estMoi
+                        ? "bg-gradient-to-br from-bordeaux to-bordeaux-vif text-white"
+                        : "border border-bord bg-velours-clair text-champagne"
+                    }`}
+                  >
+                    {m.body}
+                  </div>
+                )}
+              </div>
 
-              <div className="mt-1 flex items-center gap-2 px-1 text-[10px] text-brume">
+              <div className="mt-1 flex items-center gap-1.5 px-1 text-[10px] text-brume">
                 <span>
                   {new Date(m.created_at).toLocaleTimeString("fr-FR", {
                     hour: "2-digit",
@@ -309,8 +321,15 @@ export default function ChatRoom({
                   })}
                 </span>
                 {restant !== null && <span>· ⏳ {formaterDuree(restant)}</span>}
-                {m.view_once && <span>· 🔥 vue unique</span>}
-                {estMoi && m.read_at && <span>· lu</span>}
+                {m.view_once && <span>· 🔥</span>}
+                {estMoi && (
+                  <span
+                    className={m.read_at ? "text-orrose" : "text-brume"}
+                    title={m.read_at ? "Vu" : "Envoyé"}
+                  >
+                    · {m.read_at ? "✓✓ Vu" : "✓ Envoyé"}
+                  </span>
+                )}
               </div>
             </div>
           );
@@ -319,8 +338,7 @@ export default function ChatRoom({
       </main>
 
       {/* COMPOSITEUR */}
-      <footer className="border-t border-bord bg-velours/90 px-3 py-3 backdrop-blur">
-        {/* Options */}
+      <footer className="shrink-0 border-t border-bord bg-velours/90 px-3 py-3 backdrop-blur">
         <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1 text-xs">
           <span className="shrink-0 text-brume">Durée</span>
           {DUREES.map((d) => (
@@ -398,6 +416,58 @@ export default function ChatRoom({
           </button>
         </form>
       </footer>
+
+      {/* ---------------------------------------- Actions sur un message */}
+      {actionSur && (
+        <div
+          className="fixed inset-0 z-40 flex items-end bg-nuit/80 backdrop-blur"
+          onClick={() => setActionSur(null)}
+        >
+          <div
+            className="w-full rounded-t-3xl border-t border-bord bg-velours p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-bord" />
+            <p className="mb-4 truncate text-center text-sm text-brume">
+              {actionSur.kind === "image" ? "Photo" : actionSur.body}
+            </p>
+            <button className="btn" onClick={() => supprimer(actionSur)}>
+              Supprimer pour nous deux
+            </button>
+            <button className="btn btn-fantome mt-2" onClick={() => setActionSur(null)}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------- Vider la conversation */}
+      {confirmerVidage && (
+        <div
+          className="fixed inset-0 z-40 grid place-items-center bg-nuit/85 px-6 backdrop-blur"
+          onClick={() => setConfirmerVidage(false)}
+        >
+          <div
+            className="carte w-full max-w-sm p-6 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="font-display text-xl">Tout effacer ?</p>
+            <p className="mt-2 text-sm leading-relaxed text-brume">
+              Chaque message et chaque photo de cette conversation disparaîtront des
+              deux côtés. C&apos;est irréversible.
+            </p>
+            <button className="btn mt-5" onClick={viderConversation}>
+              Oui, tout effacer
+            </button>
+            <button
+              className="btn btn-fantome mt-2"
+              onClick={() => setConfirmerVidage(false)}
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
