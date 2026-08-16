@@ -110,12 +110,25 @@ export default function ChatRoom({
         setPartenaireEcrit(true);
         setTimeout(() => setPartenaireEcrit(false), 2500);
       })
-      .subscribe();
+      .subscribe(async (statut) => {
+        if (statut !== "SUBSCRIBED") return;
+        await canal.track({
+          id: userId,
+          visible: document.visibilityState === "visible",
+        });
+      });
+
+    // On reannonce sa presence quand l'onglet passe au premier plan ou en fond
+    const surVisibilite = () => {
+      canal.track({ id: userId, visible: document.visibilityState === "visible" });
+    };
+    document.addEventListener("visibilitychange", surVisibilite);
 
     canalRef.current = canal;
     supabase.rpc("mark_read");
 
     return () => {
+      document.removeEventListener("visibilitychange", surVisibilite);
       supabase.removeChannel(canal);
       canalRef.current = null;
     };
@@ -162,8 +175,20 @@ export default function ChatRoom({
     canalRef.current?.send({ type: "broadcast", event: "typing", payload: { from: userId } });
   }, [userId]);
 
-  /** Previens l'autre. Sans bloquer l'envoi si le push echoue. */
+  /** Le/la partenaire a-t-il l'app ouverte et au premier plan ? */
+  function partenaireDevantLEcran() {
+    const etat = canalRef.current?.presenceState() as
+      | Record<string, { id?: string; visible?: boolean }[]>
+      | undefined;
+    if (!etat) return false;
+    return Object.values(etat)
+      .flat()
+      .some((p) => p?.id && p.id !== userId && p.visible === true);
+  }
+
+  /** Previens l'autre — sauf s'il/elle lit deja. Sans bloquer l'envoi. */
   function prevenir(genre: string, apercu = "") {
+    if (partenaireDevantLEcran()) return;
     fetch("/api/push", {
       method: "POST",
       headers: { "content-type": "application/json" },

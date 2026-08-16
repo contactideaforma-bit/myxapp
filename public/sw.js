@@ -22,7 +22,22 @@ self.addEventListener("push", (event) => {
     data: { url: d.url || "/chat" },
   };
 
-  event.waitUntil(self.registration.showNotification(titre, options));
+  event.waitUntil(
+    (async () => {
+      // Si l'app est deja sous les yeux, on ne notifie pas : le message
+      // arrive de toute facon en direct dans la conversation.
+      const fenetres = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      const active = fenetres.some(
+        (c) => c.visibilityState === "visible" && c.focused
+      );
+      if (active) return;
+
+      await self.registration.showNotification(titre, options);
+    })()
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {
