@@ -31,8 +31,8 @@ export default async function ChatPage() {
       .from("messages")
       .select("*")
       .eq("couple_id", couple.id)
-      .order("created_at", { ascending: true })
-      .limit(200),
+      .order("created_at", { ascending: false })
+      .limit(60),
   ]);
 
   return (
@@ -42,7 +42,7 @@ export default async function ChatPage() {
         userId={user.id}
         partner={partner ?? { id: partnerId, display_name: "Mon amour", emoji: "🔥" }}
         monPrenom={moi?.display_name ?? ""}
-        messagesInitiaux={(messages ?? []) as Message[]}
+        messagesInitiaux={[...((messages ?? []) as Message[])].reverse()}
       />
     </AppShell>
   );

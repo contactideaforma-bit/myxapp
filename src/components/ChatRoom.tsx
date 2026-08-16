@@ -50,11 +50,19 @@ export default function ChatRoom({
   const dernierTypingRef = useRef(0);
   const zoneRef = useRef<HTMLTextAreaElement>(null);
 
-  /* ------------------------------------------------ Horloge (éphémères) */
+  /* ------------------------------------------------ Horloge (éphémères)
+     Elle ne tourne QUE s'il existe au moins un message a duree limitee.
+     Sinon on re-rendait toute la conversation chaque seconde pour rien. */
+  const aDesEphemeres = useMemo(
+    () => messages.some((m) => m.expires_at),
+    [messages]
+  );
+
   useEffect(() => {
+    if (!aDesEphemeres) return;
     const t = setInterval(() => setMaintenant(Date.now()), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [aDesEphemeres]);
 
   const visibles = useMemo(
     () =>
@@ -116,7 +124,7 @@ export default function ChatRoom({
   /* ------------------------------------------------ Purge des expirés */
   useEffect(() => {
     supabase.rpc("purge_expired");
-    const t = setInterval(() => supabase.rpc("purge_expired"), 60_000);
+    const t = setInterval(() => supabase.rpc("purge_expired"), 300_000);
     return () => clearInterval(t);
   }, [supabase]);
 

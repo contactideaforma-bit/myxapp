@@ -18,8 +18,8 @@
   --color-brume: #9b8d96;
 
   /* Typographies */
-  --font-display: "Playfair Display", Georgia, serif;
-  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: var(--police-titre), Georgia, serif;
+  --font-sans: var(--police-ui), system-ui, -apple-system, sans-serif;
 
   /* Rayons */
   --radius-doux: 1rem;

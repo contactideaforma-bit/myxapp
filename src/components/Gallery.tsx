@@ -69,19 +69,33 @@ export default function Gallery({
   }, [supabase, coupleId]);
 
   /* ------------------------------------------------ Etat de la session */
+  /* La verification periodique ne fait QUE verifier : elle ne recharge
+     plus les photos ni ne re-signe les URL toutes les minutes. */
   const verifierSession = useCallback(async () => {
     const { data } = await supabase.rpc("vault_is_unlocked");
     const ok = data === true;
-    setOuvert(ok);
-    if (ok) charger();
+    setOuvert((avant) => {
+      if (avant === true && !ok) {
+        setItems([]);
+        setUrls({});
+      }
+      return ok;
+    });
     return ok;
-  }, [supabase, charger]);
+  }, [supabase]);
 
   useEffect(() => {
-    verifierSession();
+    let vivant = true;
+    (async () => {
+      const ok = await verifierSession();
+      if (ok && vivant) charger();
+    })();
     const t = setInterval(verifierSession, 60_000);
-    return () => clearInterval(t);
-  }, [verifierSession]);
+    return () => {
+      vivant = false;
+      clearInterval(t);
+    };
+  }, [verifierSession, charger]);
 
   /* ------------------------------------------------ Verrouillage auto */
   function armerMinuterie() {

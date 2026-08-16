@@ -280,7 +280,7 @@ export default function Kamasutra({
       {illustrees > 0 && (
       <div className="mb-4 flex items-center gap-1 rounded-xl border border-bord bg-velours-clair p-1 text-xs">
         {[
-          { cle: "silhouette", label: "Silhouettes", aide: "discret" },
+          { cle: "silhouette", label: "Sobre", aide: "sans image" },
           { cle: "detaillee", label: "Illustrations", aide: `${illustrees} dispo` },
         ].map((m) => (
           <button

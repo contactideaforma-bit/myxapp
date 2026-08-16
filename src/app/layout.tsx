@@ -1,8 +1,24 @@
 import type { Metadata, Viewport } from "next";
+import { Playfair_Display, Inter } from "next/font/google";
 import "./globals.css";
 
+/* Polices auto-hebergees par Next : plus de requete bloquante vers Google. */
+const titre = Playfair_Display({
+  subsets: ["latin"],
+  weight: ["500", "600"],
+  style: ["normal", "italic"],
+  variable: "--police-titre",
+  display: "swap",
+});
+
+const interface_ = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--police-ui",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  // Titre volontairement neutre : discret dans l'historique du navigateur
   title: "Agenda",
   description: "Espace privé",
   manifest: "/manifest.json",
@@ -21,15 +37,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="fr">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="fr" className={`${titre.variable} ${interface_.variable}`}>
       <body className="halo">
         <div className="relative z-10 min-h-full">{children}</div>
       </body>
