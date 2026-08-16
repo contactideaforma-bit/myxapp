@@ -154,23 +154,37 @@ export default function Silhouette({
 }) {
   const f = FIGURES[figure] ?? FIGURES.enlacement;
 
-  const trait = (c: Corps, couleur: string) => (
-    <g
-      stroke={couleur}
-      strokeWidth={7}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      fill="none"
-      opacity={0.95}
-    >
-      <circle cx={c.tete[0]} cy={c.tete[1]} r={8.5} fill={couleur} stroke="none" />
-      <path d={c.d} />
-    </g>
-  );
+  // Corps pleins plutot que traits : le premier segment de chaque figure
+  // est le torse, on l'epaissit franchement ; les suivants sont les
+  // membres, un peu plus fins. Le resultat lit comme une silhouette,
+  // plus comme un bonhomme-baton.
+  const trait = (c: Corps, couleur: string) => {
+    const segments = c.d
+      .split("M")
+      .filter((x) => x.trim())
+      .map((x) => `M${x.trim()}`);
+    const [torse, ...membres] = segments;
+
+    return (
+      <g
+        stroke={couleur}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+        opacity={0.95}
+      >
+        {membres.map((d, i) => (
+          <path key={i} d={d} strokeWidth={15} />
+        ))}
+        {torse && <path d={torse} strokeWidth={25} />}
+        <circle cx={c.tete[0]} cy={c.tete[1]} r={12} fill={couleur} stroke="none" />
+      </g>
+    );
+  };
 
   return (
-    <svg viewBox="0 0 200 124" className={className} aria-hidden>
-      <ellipse cx="100" cy="112" rx="86" ry="7" fill="#32263A" opacity="0.55" />
+    <svg viewBox="-8 -6 216 140" className={className} aria-hidden>
+      <ellipse cx="100" cy="120" rx="90" ry="8" fill="#32263A" opacity="0.55" />
       {trait(f.b, "#A32E52")}
       {trait(f.a, "#E8B4A0")}
     </svg>

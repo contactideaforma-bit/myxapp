@@ -63,11 +63,22 @@ function Duotone({ src, className = "" }: { src: string; className?: string }) {
   );
 }
 
-export default function Kamasutra({ modeInitial }: { modeInitial: string }) {
+export default function Kamasutra({
+  coupleId,
+  userId,
+  modeInitial,
+}: {
+  coupleId: string;
+  userId: string;
+  modeInitial: string;
+}) {
   const [supabase] = useState(() => createClient());
 
   const [positions, setPositions] = useState<PositionDB[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
+  const [imagesCouple, setImagesCouple] = useState<Record<string, string>>({});
+  const [urlsCouple, setUrlsCouple] = useState<Record<string, string>>({});
+  const [televerse, setTeleverse] = useState<string | null>(null);
   const [marques, setMarques] = useState<Record<string, Omit<Marque, "pos_key">>>({});
   const [mode, setMode] = useState(modeInitial);
   const [filtre, setFiltre] = useState<(typeof FILTRES)[number]["cle"]>("toutes");
@@ -77,10 +88,32 @@ export default function Kamasutra({ modeInitial }: { modeInitial: string }) {
 
   /* ------------------------------------------------ Chargement */
   const charger = useCallback(async () => {
-    const [{ data: pos }, { data: mk }] = await Promise.all([
+    const [{ data: pos }, { data: mk }, { data: imgs }] = await Promise.all([
       supabase.from("positions").select("*").eq("active", true).order("ordre"),
       supabase.rpc("positions_overview"),
+      supabase.from("position_images").select("position_key, storage_path"),
     ]);
+
+    // Illustrations deposees par le couple : elles priment sur tout
+    const perso: Record<string, string> = {};
+    ((imgs ?? []) as { position_key: string; storage_path: string }[]).forEach((i) => {
+      perso[i.position_key] = i.storage_path;
+    });
+    setImagesCouple(perso);
+
+    const cheminsPerso = Object.values(perso);
+    if (cheminsPerso.length) {
+      const { data: sp } = await supabase.storage
+        .from("intimate")
+        .createSignedUrls(cheminsPerso, 3600);
+      const up: Record<string, string> = {};
+      (sp ?? []).forEach((x) => {
+        if (x.signedUrl && x.path) up[x.path] = x.signedUrl;
+      });
+      setUrlsCouple(up);
+    } else {
+      setUrlsCouple({});
+    }
 
     const liste = (pos ?? []) as PositionDB[];
     setPositions(liste);
@@ -146,14 +179,80 @@ export default function Kamasutra({ modeInitial }: { modeInitial: string }) {
   );
 
   const communes = positions.filter((p) => etat(p.key).both_want).length;
-  const illustrees = positions.filter((p) => p.image_path).length;
+  const illustrees = positions.filter(
+    (p) => imagesCouple[p.key] || p.image_path
+  ).length;
 
   /** Visuel d'une position selon le mode choisi, avec repli automatique. */
   const visuel = (p: PositionDB, classe: string) => {
-    const url = p.image_path ? urls[p.image_path] : null;
-    if (mode === "detaillee" && url) return <Duotone src={url} className={classe} />;
+    if (mode === "detaillee") {
+      // 1. l'image deposee par le couple, telle quelle
+      const chemin = imagesCouple[p.key];
+      const perso = chemin ? urlsCouple[chemin] : null;
+      if (perso) {
+        return (
+          <div className={`relative overflow-hidden bg-nuit ${classe}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={perso}
+              alt=""
+              draggable={false}
+              onContextMenu={(e) => e.preventDefault()}
+              className="h-full w-full object-cover"
+            />
+          </div>
+        );
+      }
+      // 2. a defaut, une illustration du catalogue, harmonisee
+      const url = p.image_path ? urls[p.image_path] : null;
+      if (url) return <Duotone src={url} className={classe} />;
+    }
+    // 3. sinon la silhouette
     return <Silhouette figure={p.figure ?? p.key} className={classe} />;
   };
+
+  /* ------------------------------------------------ Depot d'illustration */
+  async function deposer(key: string, fichier: File) {
+    if (!fichier.type.startsWith("image/")) return;
+    setTeleverse(key);
+
+    const ext = (fichier.name.split(".").pop() || "jpg").toLowerCase();
+    const chemin = `${coupleId}/positions/${key}.${ext}`;
+
+    const { error: errUp } = await supabase.storage
+      .from("intimate")
+      .upload(chemin, fichier, { upsert: true, cacheControl: "0" });
+
+    if (!errUp) {
+      await supabase.from("position_images").upsert(
+        {
+          couple_id: coupleId,
+          position_key: key,
+          storage_path: chemin,
+          updated_by: userId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "couple_id,position_key" }
+      );
+      setMode("detaillee");
+      await supabase.rpc("set_illustration_mode", { p_mode: "detaillee" });
+      await charger();
+    }
+    setTeleverse(null);
+  }
+
+  async function retirer(key: string) {
+    const chemin = imagesCouple[key];
+    setTeleverse(key);
+    if (chemin) await supabase.storage.from("intimate").remove([chemin]);
+    await supabase
+      .from("position_images")
+      .delete()
+      .eq("couple_id", coupleId)
+      .eq("position_key", key);
+    await charger();
+    setTeleverse(null);
+  }
 
   return (
     <div className="mx-auto max-w-md px-4 py-6">
@@ -324,6 +423,51 @@ export default function Kamasutra({ modeInitial }: { modeInitial: string }) {
                 </div>
               );
             })()}
+
+            {/* -------------------------------------- Illustration perso */}
+            <div className="mt-5 rounded-xl border border-bord bg-velours-clair p-4">
+              <p className="text-xs uppercase tracking-widest text-brume">
+                Illustration
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-brume">
+                Déposez votre propre image pour cette position. Elle part dans votre
+                espace privé — personne d&apos;autre que vous deux n&apos;y accède.
+              </p>
+
+              <div className="mt-3 flex gap-2">
+                <label
+                  className={`btn cursor-pointer ${
+                    televerse === ouverte.key ? "pointer-events-none opacity-50" : ""
+                  }`}
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) deposer(ouverte.key, f);
+                      e.target.value = "";
+                    }}
+                  />
+                  {televerse === ouverte.key
+                    ? "Envoi…"
+                    : imagesCouple[ouverte.key]
+                      ? "Remplacer"
+                      : "Déposer une image"}
+                </label>
+
+                {imagesCouple[ouverte.key] && (
+                  <button
+                    className="btn btn-fantome"
+                    disabled={televerse === ouverte.key}
+                    onClick={() => retirer(ouverte.key)}
+                  >
+                    Retirer
+                  </button>
+                )}
+              </div>
+            </div>
 
             {ouverte.image_credit && mode === "detaillee" && (
               <p className="mt-4 text-center text-[10px] leading-relaxed text-brume">

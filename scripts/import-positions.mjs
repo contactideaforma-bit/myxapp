@@ -60,11 +60,17 @@ async function lister(categorie) {
     format: "json",
   });
 
-  const rep = await fetch(`${API}?${params}`, { headers: { "User-Agent": UA } });
-  if (!rep.ok) throw new Error(`Commons a repondu ${rep.status}`);
-  const json = await rep.json();
+  const pages = [];
+  let suite = null;
+  do {
+    if (suite) params.set("gcmcontinue", suite);
+    const rep = await fetch(`${API}?${params}`, { headers: { "User-Agent": UA } });
+    if (!rep.ok) throw new Error(`Commons a repondu ${rep.status}`);
+    const json = await rep.json();
+    pages.push(...Object.values(json?.query?.pages ?? {}));
+    suite = json?.continue?.gcmcontinue ?? null;
+  } while (suite);
 
-  const pages = Object.values(json?.query?.pages ?? {});
   if (!pages.length) throw new Error("Aucun fichier trouve dans la categorie.");
 
   const fichiers = pages
@@ -94,7 +100,7 @@ async function lister(categorie) {
     console.log(`${String(i + 1).padStart(3)}. ${f.fichier}   [${f.licence}]`)
   );
   console.log(`\n→ Ecrit dans ${sortie}`);
-  console.log(`→ Envoie ce fichier pour que les correspondances soient ecrites.\n`);
+  return fichiers;
 }
 
 /* ------------------------------------------------------ Import */
@@ -195,15 +201,122 @@ async function importer() {
   console.log(`\n${ok} importées, ${rates} en échec.\n`);
 }
 
+
+/* ------------------------------------------------------ Import automatique */
+/**
+ * Aspire une categorie entiere : telecharge, depose dans le bucket, et
+ * cree les fiches du catalogue. Aucune saisie manuelle.
+ * Les entrees creees sont prefixees "wm_" pour ne jamais heurter les 23
+ * positions authentiques, et marquees "a relire".
+ */
+async function importerCategorie(categorie, filtre) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const cle = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !cle) {
+    console.error("\nIl manque NEXT_PUBLIC_SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY dans .env.local\n");
+    process.exit(1);
+  }
+
+  const supabase = createClient(url, cle, { auth: { persistSession: false } });
+  let fichiers = await lister(categorie);
+
+  if (filtre) {
+    const re = new RegExp(filtre, "i");
+    const avant = fichiers.length;
+    fichiers = fichiers.filter((f) => re.test(f.fichier));
+    console.log(`\nFiltre « ${filtre} » : ${fichiers.length} retenus sur ${avant}.`);
+  }
+
+  const types = {
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+    webp: "image/webp", gif: "image/gif", svg: "image/svg+xml",
+  };
+
+  console.log(`\nImport de ${fichiers.length} fichiers…\n`);
+  let ok = 0, rates = 0, ordre = 900;
+
+  for (const f of fichiers) {
+    const slug = f.fichier
+      .replace(/^File:/, "")
+      .replace(/\.[^.]+$/, "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .toLowerCase()
+      .slice(0, 48);
+    const key = `wm_${slug}`;
+
+    try {
+      const rep = await fetch(f.url, { headers: { "User-Agent": UA } });
+      if (!rep.ok) throw new Error(`telechargement ${rep.status}`);
+      const buffer = Buffer.from(await rep.arrayBuffer());
+
+      const extUrl = (f.url.split("?")[0].split(".").pop() || "png").toLowerCase();
+      const ext = types[extUrl] ? extUrl : "png";
+      const chemin = `${key}.${ext}`;
+
+      const { error: errUp } = await supabase.storage
+        .from(BUCKET)
+        .upload(chemin, buffer, { contentType: types[ext], upsert: true });
+      if (errUp) throw errUp;
+
+      const nom = f.fichier
+        .replace(/^File:/, "")
+        .replace(/\.[^.]+$/, "")
+        .replace(/[_-]+/g, " ")
+        .trim();
+
+      const { error: errDb } = await supabase.from("positions").upsert(
+        {
+          key,
+          nom,
+          sous_titre: null,
+          description: null,
+          conseil: null,
+          difficulte: 1,
+          intensite: 2,
+          figure: null,
+          image_path: chemin,
+          image_credit: `${f.auteur} — ${f.licence}`,
+          image_source_url: f.page,
+          source: "wikimedia",
+          a_relire: true,
+          ordre: ordre++,
+          active: true,
+        },
+        { onConflict: "key" }
+      );
+      if (errDb) throw errDb;
+
+      console.log(`  ✓ ${nom}`);
+      ok++;
+    } catch (e) {
+      console.warn(`  ✗ ${f.fichier} : ${e.message}`);
+      rates++;
+    }
+  }
+
+  console.log(`\n${ok} fiches creees, ${rates} en echec.`);
+  console.log(`Ouvre l'onglet Positions : elles sont deja la, en bas de liste.\n`);
+}
+
 /* ------------------------------------------------------ Entree */
 const mode = process.argv[2];
+const filtreArg = process.argv.find((a) => a.startsWith("--filtre="));
 if (mode === "--list") await lister(process.argv[3] || CATEGORIE_DEFAUT);
+else if (mode === "--import-categorie")
+  await importerCategorie(process.argv[3] || CATEGORIE_DEFAUT, filtreArg?.split("=")[1]);
 else if (mode === "--import") await importer();
 else {
   console.log(`
 Usage :
   node scripts/import-positions.mjs --list                    categorie par defaut
   node scripts/import-positions.mjs --list "Category:Kama Sutra"  categorie precise
-  node scripts/import-positions.mjs --import    import reel
+  node scripts/import-positions.mjs --import-categorie "Category:X"
+        aspire toute une categorie : telecharge, depose, cree les fiches
+        (option --filtre="motif" pour ne retenir que certains fichiers)
+
+  node scripts/import-positions.mjs --import
+        import cible, a partir de scripts/commons-mapping.json
 `);
 }

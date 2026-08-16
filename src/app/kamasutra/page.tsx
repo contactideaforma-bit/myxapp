@@ -22,7 +22,11 @@ export default async function KamasutraPage() {
 
   return (
     <AppShell>
-      <Kamasutra modeInitial={couple.illustration_mode ?? "silhouette"} />
+      <Kamasutra
+        coupleId={couple.id}
+        userId={user.id}
+        modeInitial={couple.illustration_mode ?? "silhouette"}
+      />
     </AppShell>
   );
 }
