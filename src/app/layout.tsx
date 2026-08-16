@@ -5,6 +5,9 @@ export const metadata: Metadata = {
   // Titre volontairement neutre : discret dans l'historique du navigateur
   title: "Agenda",
   description: "Espace privé",
+  manifest: "/manifest.json",
+  appleWebApp: { capable: true, title: "Agenda", statusBarStyle: "black-translucent" },
+  icons: { icon: "/icone-192.png", apple: "/icone-192.png" },
 };
 
 export const viewport: Viewport = {

@@ -24,8 +24,9 @@ export default async function ChatPage() {
 
   const partnerId = couple.member_a === user.id ? couple.member_b : couple.member_a;
 
-  const [{ data: partner }, { data: messages }] = await Promise.all([
+  const [{ data: partner }, { data: moi }, { data: messages }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", partnerId).maybeSingle<Profile>(),
+    supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
     supabase
       .from("messages")
       .select("*")
@@ -40,6 +41,7 @@ export default async function ChatPage() {
         coupleId={couple.id}
         userId={user.id}
         partner={partner ?? { id: partnerId, display_name: "Mon amour", emoji: "🔥" }}
+        monPrenom={moi?.display_name ?? ""}
         messagesInitiaux={(messages ?? []) as Message[]}
       />
     </AppShell>

@@ -19,11 +19,13 @@ export default function ChatRoom({
   coupleId,
   userId,
   partner,
+  monPrenom,
   messagesInitiaux,
 }: {
   coupleId: string;
   userId: string;
   partner: Profile;
+  monPrenom: string;
   messagesInitiaux: Message[];
 }) {
   const router = useRouter();
@@ -139,6 +141,15 @@ export default function ChatRoom({
     canalRef.current?.send({ type: "broadcast", event: "typing", payload: { from: userId } });
   }, [userId]);
 
+  /** Previens l'autre. Sans bloquer l'envoi si le push echoue. */
+  function prevenir(genre: string, apercu = "") {
+    fetch("/api/push", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ genre, apercu, prenom: monPrenom }),
+    }).catch(() => {});
+  }
+
   function calculerExpiration() {
     return duree > 0 ? new Date(Date.now() + duree * 1000).toISOString() : null;
   }
@@ -166,6 +177,7 @@ export default function ChatRoom({
       setMessages((prev) =>
         prev.some((x) => x.id === data.id) ? prev : [...prev, data as Message]
       );
+      prevenir("message", corps);
     }
     setEnvoi(false);
   }
@@ -199,6 +211,7 @@ export default function ChatRoom({
         setMessages((prev) =>
           prev.some((x) => x.id === data.id) ? prev : [...prev, data as Message]
         );
+        prevenir("photo");
       }
     }
     setEnvoi(false);
@@ -217,10 +230,12 @@ export default function ChatRoom({
       })
       .select()
       .single();
-    if (data)
+    if (data) {
       setMessages((prev) =>
         prev.some((x) => x.id === data.id) ? prev : [...prev, data as Message]
       );
+      prevenir("gif");
+    }
   }
 
   async function envoyerSticker(chemin: string) {
@@ -236,10 +251,12 @@ export default function ChatRoom({
       })
       .select()
       .single();
-    if (data)
+    if (data) {
       setMessages((prev) =>
         prev.some((x) => x.id === data.id) ? prev : [...prev, data as Message]
       );
+      prevenir("photo");
+    }
   }
 
   async function marquerOuverte(id: string) {

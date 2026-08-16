@@ -30,4 +30,5 @@ export type Profile = {
   avatar_path?: string | null;
   bio?: string | null;
   avatar?: Record<string, unknown> | null;
+  notif_style?: string | null;
 };

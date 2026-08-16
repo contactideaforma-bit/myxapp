@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Couple, Profile } from "@/lib/types";
+import Notifications from "./Notifications";
 
 const EMOJIS = ["🔥", "💋", "🖤", "🌹", "🍒", "😈", "👑", "🌙", "⚡", "🥀", "💫", "🐺"];
 
@@ -277,6 +278,12 @@ export default function ProfileForm({
           Enregistrer notre histoire
         </button>
       </section>
+
+      <Notifications
+        userId={moi.id}
+        coupleId={coupleId}
+        styleInitial={moi.notif_style ?? "discret"}
+      />
 
       {/* ---------------------------------------------------- GALERIE */}
       <section className="carte space-y-3 p-5">
