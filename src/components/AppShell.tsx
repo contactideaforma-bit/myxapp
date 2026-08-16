@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useClavier } from "@/lib/useClavier";
 
 const ONGLETS = [
   { href: "/chat", label: "Nous", icone: "bulle" },
@@ -78,13 +79,23 @@ export default function AppShell({
   plein?: boolean;
 }) {
   const chemin = usePathname();
+  const clavier = useClavier();
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div
+      className="flex flex-col"
+      style={{
+        // Quand le clavier est ouvert, la vue se limite a ce qui reste
+        // visible : plus rien ne se cache derriere.
+        height: clavier ? `calc(100dvh - ${clavier}px)` : "100dvh",
+        transition: "height 0.18s ease-out",
+      }}
+    >
       <main className={`min-h-0 flex-1 ${plein ? "" : "overflow-y-auto"}`}>
         {children}
       </main>
 
+      {clavier === 0 && (
       <nav className="shrink-0 border-t border-bord bg-velours/95 backdrop-blur">
         <ul className="mx-auto flex max-w-md">
           {ONGLETS.map((o) => {
@@ -111,6 +122,7 @@ export default function AppShell({
         </ul>
         <div className="h-[env(safe-area-inset-bottom)]" />
       </nav>
+      )}
     </div>
   );
 }

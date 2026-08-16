@@ -93,7 +93,10 @@ export default function ChatRoom({
     const surVisibilite = () => {
       canal?.track({ id: userId, visible: document.visibilityState === "visible" });
       // Au retour au premier plan, on rattrape ce qu'on aurait manqué.
-      if (document.visibilityState === "visible") rafraichir();
+      if (document.visibilityState === "visible") {
+        supabase.rpc("mark_read");
+        rafraichir();
+      }
     };
 
     (async () => {
@@ -153,6 +156,7 @@ export default function ChatRoom({
               id: userId,
               visible: document.visibilityState === "visible",
             });
+            await supabase.rpc("mark_read");
             rafraichir(); // on rattrape ce qui est arrive pendant la connexion
           }
         });
@@ -279,6 +283,7 @@ export default function ChatRoom({
       prevenir("message", corps);
     }
     setEnvoi(false);
+    zoneRef.current?.focus();
   }
 
   async function envoyerImage(fichier: File) {
@@ -590,6 +595,13 @@ export default function ChatRoom({
           <button
             type="submit"
             disabled={!texte.trim() || envoi}
+            // On empeche le bouton de prendre le focus : sinon le champ
+            // le perd et iOS referme le clavier a chaque envoi.
+            onMouseDown={(e) => e.preventDefault()}
+            onTouchEnd={(e) => {
+              e.preventDefault();
+              if (texte.trim() && !envoi) envoyerTexte(e);
+            }}
             className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-bordeaux to-bordeaux-vif text-white disabled:opacity-40"
             title="Envoyer"
           >

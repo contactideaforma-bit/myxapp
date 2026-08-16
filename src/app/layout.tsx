@@ -31,6 +31,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  // Le clavier redimensionne la mise en page au lieu de la recouvrir.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
