@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { avecDuree } from "@/lib/supabase/cookies";
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -13,18 +14,18 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
+            response.cookies.set(name, value, avecDuree(options))
           );
         },
       },
     }
   );
 
+  // getUser() rafraichit le jeton si besoin : c'est ce qui garde la
+  // session vivante indefiniment tant que l'app est ouverte de temps en temps.
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -42,5 +43,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: [
+    "/((?!api/|_next/static|_next/image|favicon.ico|sw.js|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };
