@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useClavier } from "@/lib/useClavier";
 
@@ -80,6 +81,32 @@ export default function AppShell({
 }) {
   const chemin = usePathname();
   const clavier = useClavier();
+  const [saisie, setSaisie] = useState(false);
+
+  /* Second signal, plus fiable qu'un calcul de viewport sur iOS :
+     des qu'un champ texte a le focus, on considere que le clavier est la. */
+  useEffect(() => {
+    const estChampTexte = (c: EventTarget | null) => {
+      const el = c as HTMLElement | null;
+      if (!el) return false;
+      const t = el.tagName;
+      return t === "TEXTAREA" || (t === "INPUT" && !["checkbox", "radio", "range", "file", "button", "submit"].includes((el as HTMLInputElement).type));
+    };
+    const entree = (e: FocusEvent) => estChampTexte(e.target) && setSaisie(true);
+    const sortie = () => setTimeout(() => {
+      const a = document.activeElement;
+      setSaisie(estChampTexte(a));
+    }, 60);
+
+    document.addEventListener("focusin", entree);
+    document.addEventListener("focusout", sortie);
+    return () => {
+      document.removeEventListener("focusin", entree);
+      document.removeEventListener("focusout", sortie);
+    };
+  }, []);
+
+  const clavierOuvert = clavier > 0 || saisie;
 
   return (
     <div
@@ -95,7 +122,7 @@ export default function AppShell({
         {children}
       </main>
 
-      {clavier === 0 && (
+      {!clavierOuvert && (
       <nav className="shrink-0 border-t border-bord bg-velours/95 backdrop-blur">
         <ul className="mx-auto flex max-w-md">
           {ONGLETS.map((o) => {
