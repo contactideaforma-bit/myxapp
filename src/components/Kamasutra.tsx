@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import Silhouette from "./Silhouette";
+import Scene from "./Scene";
+import type { AvatarParams } from "@/lib/avatar-engine";
 
 export type PositionDB = {
   key: string;
@@ -45,8 +46,8 @@ const FILTRES = [
   { cle: "coups", label: "🔥 Coups de cœur" },
 ] as const;
 
-/** Illustration importée, fondue dans la charte : inversée puis teintée. */
-function Duotone({ src, className = "" }: { src: string; className?: string }) {
+/** Illustration du catalogue, affichée telle quelle. */
+function Illustration({ src, className = "" }: { src: string; className?: string }) {
   return (
     <div className={`relative overflow-hidden bg-nuit ${className}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -55,10 +56,8 @@ function Duotone({ src, className = "" }: { src: string; className?: string }) {
         alt=""
         draggable={false}
         onContextMenu={(e) => e.preventDefault()}
-        className="h-full w-full object-contain opacity-90 grayscale invert contrast-110"
+        className="h-full w-full object-contain"
       />
-      <span className="pointer-events-none absolute inset-0 bg-bordeaux mix-blend-color" />
-      <span className="pointer-events-none absolute inset-0 bg-orrose/20 mix-blend-soft-light" />
     </div>
   );
 }
@@ -67,10 +66,14 @@ export default function Kamasutra({
   coupleId,
   userId,
   modeInitial,
+  avatarA,
+  avatarB,
 }: {
   coupleId: string;
   userId: string;
   modeInitial: string;
+  avatarA?: Partial<AvatarParams> | null;
+  avatarB?: Partial<AvatarParams> | null;
 }) {
   const [supabase] = useState(() => createClient());
 
@@ -203,12 +206,14 @@ export default function Kamasutra({
           </div>
         );
       }
-      // 2. a defaut, une illustration du catalogue, harmonisee
+      // 2. a defaut, une illustration du catalogue
       const url = p.image_path ? urls[p.image_path] : null;
-      if (url) return <Duotone src={url} className={classe} />;
+      if (url) return <Illustration src={url} className={classe} />;
     }
-    // 3. sinon la silhouette
-    return <Silhouette figure={p.figure ?? p.key} className={classe} />;
+    // 3. sinon vos avatars, joues dans la posture
+    return (
+      <Scene pose={p.figure ?? p.key} a={avatarA} b={avatarB} className={classe} />
+    );
   };
 
   /* ------------------------------------------------ Depot d'illustration */

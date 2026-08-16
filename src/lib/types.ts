@@ -29,4 +29,5 @@ export type Profile = {
   emoji: string;
   avatar_path?: string | null;
   bio?: string | null;
+  avatar?: Record<string, unknown> | null;
 };
