@@ -1,32 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import AppShell from "@/components/AppShell";
-import Kamasutra from "@/components/Kamasutra";
 
-export const dynamic = "force-dynamic";
-
-export default async function KamasutraPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: couple } = await supabase
-    .from("couples")
-    .select("id, member_b, illustration_mode")
-    .or(`member_a.eq.${user.id},member_b.eq.${user.id}`)
-    .maybeSingle<{ id: string; member_b: string | null; illustration_mode: string }>();
-
-  if (!couple || !couple.member_b) redirect("/pair");
-
-  return (
-    <AppShell>
-      <Kamasutra
-        coupleId={couple.id}
-        userId={user.id}
-        modeInitial={couple.illustration_mode ?? "silhouette"}
-      />
-    </AppShell>
-  );
+// Section mise de cote. La route reste pour ne pas casser un lien existant.
+export default function KamasutraPage() {
+  redirect("/chat");
 }

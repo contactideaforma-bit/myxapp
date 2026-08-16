@@ -43,6 +43,7 @@ export default function ChatRoom({
   const [actionSur, setActionSur] = useState<Message | null>(null);
   const [confirmerVidage, setConfirmerVidage] = useState(false);
   const [pickerOuvert, setPickerOuvert] = useState(false);
+  const [enDirect, setEnDirect] = useState(false);
 
   const finRef = useRef<HTMLDivElement>(null);
   const fichierRef = useRef<HTMLInputElement>(null);
@@ -72,67 +73,119 @@ export default function ChatRoom({
     [messages, maintenant]
   );
 
+  /* ------------------------------------------------ Rechargement de secours */
+  const rafraichir = useCallback(async () => {
+    const { data } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("couple_id", coupleId)
+      .order("created_at", { ascending: false })
+      .limit(60);
+    if (data) setMessages([...(data as Message[])].reverse());
+  }, [supabase, coupleId]);
+
   /* ------------------------------------------------ Temps réel */
   useEffect(() => {
-    const canal = supabase
-      .channel(`chat-${coupleId}`, { config: { broadcast: { self: false } } })
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `couple_id=eq.${coupleId}` },
-        (payload) => {
-          const m = payload.new as Message;
-          setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
-          if (m.sender_id !== userId) {
-            setPartenaireEcrit(false);
-            supabase.rpc("mark_read");
-          }
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "messages", filter: `couple_id=eq.${coupleId}` },
-        (payload) => {
-          const m = payload.new as Message;
-          setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "DELETE", schema: "public", table: "messages" },
-        (payload) => {
-          const ancien = payload.old as Partial<Message>;
-          if (!ancien?.id) return;
-          setMessages((prev) => prev.filter((x) => x.id !== ancien.id));
-        }
-      )
-      .on("broadcast", { event: "typing" }, ({ payload }) => {
-        if (payload?.from === userId) return;
-        setPartenaireEcrit(true);
-        setTimeout(() => setPartenaireEcrit(false), 2500);
-      })
-      .subscribe(async (statut) => {
-        if (statut !== "SUBSCRIBED") return;
-        await canal.track({
-          id: userId,
-          visible: document.visibilityState === "visible",
-        });
-      });
+    let canal: ReturnType<typeof supabase.channel> | null = null;
+    let annule = false;
+    let secours: ReturnType<typeof setInterval> | null = null;
 
-    // On reannonce sa presence quand l'onglet passe au premier plan ou en fond
     const surVisibilite = () => {
-      canal.track({ id: userId, visible: document.visibilityState === "visible" });
+      canal?.track({ id: userId, visible: document.visibilityState === "visible" });
+      // Au retour au premier plan, on rattrape ce qu'on aurait manqué.
+      if (document.visibilityState === "visible") rafraichir();
     };
+
+    (async () => {
+      // IMPORTANT : le socket temps réel doit porter le jeton de
+      // l'utilisateur, sinon la RLS filtre tout et aucun événement
+      // n'arrive. Avec une session en cookies, il faut le poser à la main.
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (annule) return;
+      try {
+        supabase.realtime.setAuth(session?.access_token ?? null);
+      } catch {
+        /* versions plus anciennes : le jeton est deja pose */
+      }
+
+      canal = supabase
+        .channel(`chat-${coupleId}`, { config: { broadcast: { self: false } } })
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "messages", filter: `couple_id=eq.${coupleId}` },
+          (payload) => {
+            const m = payload.new as Message;
+            setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
+            if (m.sender_id !== userId) {
+              setPartenaireEcrit(false);
+              supabase.rpc("mark_read");
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "messages", filter: `couple_id=eq.${coupleId}` },
+          (payload) => {
+            const m = payload.new as Message;
+            setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "DELETE", schema: "public", table: "messages" },
+          (payload) => {
+            const ancien = payload.old as Partial<Message>;
+            if (!ancien?.id) return;
+            setMessages((prev) => prev.filter((x) => x.id !== ancien.id));
+          }
+        )
+        .on("broadcast", { event: "typing" }, ({ payload }) => {
+          if (payload?.from === userId) return;
+          setPartenaireEcrit(true);
+          setTimeout(() => setPartenaireEcrit(false), 2500);
+        })
+        .subscribe(async (statut) => {
+          setEnDirect(statut === "SUBSCRIBED");
+          if (statut === "SUBSCRIBED") {
+            await canal?.track({
+              id: userId,
+              visible: document.visibilityState === "visible",
+            });
+            rafraichir(); // on rattrape ce qui est arrive pendant la connexion
+          }
+        });
+
+      canalRef.current = canal;
+      supabase.rpc("mark_read");
+
+      // Filet : si le canal ne s'etablit pas, on interroge la base.
+      secours = setInterval(() => {
+        if (canal?.state !== "joined") rafraichir();
+      }, 15_000);
+    })();
+
     document.addEventListener("visibilitychange", surVisibilite);
 
-    canalRef.current = canal;
-    supabase.rpc("mark_read");
+    // Le jeton change toutes les heures : il faut le repousser au socket.
+    const { data: ecoute } = supabase.auth.onAuthStateChange((_e, session) => {
+      try {
+        supabase.realtime.setAuth(session?.access_token ?? null);
+      } catch {
+        /* ignore */
+      }
+    });
 
     return () => {
+      annule = true;
       document.removeEventListener("visibilitychange", surVisibilite);
-      supabase.removeChannel(canal);
+      if (secours) clearInterval(secours);
+      ecoute.subscription.unsubscribe();
+      if (canal) supabase.removeChannel(canal);
       canalRef.current = null;
     };
-  }, [supabase, coupleId, userId]);
+  }, [supabase, coupleId, userId, rafraichir]);
 
   /* ------------------------------------------------ Purge des expirés */
   useEffect(() => {
@@ -349,7 +402,13 @@ export default function ChatRoom({
         <div className="min-w-0 flex-1">
           <p className="truncate font-display text-lg leading-tight">{partner.display_name}</p>
           <p className="text-xs text-brume">
-            {partenaireEcrit ? <span className="text-orrose">écrit…</span> : "Lié·e·s"}
+            {partenaireEcrit ? (
+              <span className="text-orrose">écrit…</span>
+            ) : enDirect ? (
+              "En direct"
+            ) : (
+              <span className="opacity-60">Reconnexion…</span>
+            )}
           </p>
         </div>
         <button

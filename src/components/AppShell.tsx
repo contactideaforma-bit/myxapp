@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 const ONGLETS = [
   { href: "/chat", label: "Nous", icone: "bulle" },
   { href: "/galerie", label: "Galerie", icone: "image" },
-  { href: "/kamasutra", label: "Positions", icone: "flamme" },
   { href: "/jeux", label: "Jeux", icone: "de" },
   { href: "/idees", label: "Idées", icone: "etincelle" },
   { href: "/profil", label: "Profil", icone: "profil" },
