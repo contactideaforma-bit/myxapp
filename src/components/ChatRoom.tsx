@@ -48,6 +48,7 @@ export default function ChatRoom({
   const fichierRef = useRef<HTMLInputElement>(null);
   const canalRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const dernierTypingRef = useRef(0);
+  const zoneRef = useRef<HTMLTextAreaElement>(null);
 
   /* ------------------------------------------------ Horloge (éphémères) */
   useEffect(() => {
@@ -134,6 +135,18 @@ export default function ChatRoom({
   }, []);
 
   /* ------------------------------------------------ Actions */
+  /** Le champ grandit avec le texte, jusqu'a 6 lignes. */
+  function ajusterHauteur() {
+    const el = zoneRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
+  }
+
+  useEffect(() => {
+    ajusterHauteur();
+  }, [texte]);
+
   const signalerFrappe = useCallback(() => {
     const now = Date.now();
     if (now - dernierTypingRef.current < 1500) return;
@@ -349,11 +362,13 @@ export default function ChatRoom({
           return (
             <div
               key={m.id}
-              className={`anim-monte flex flex-col ${estMoi ? "items-end" : "items-start"}`}
+              className={`anim-monte flex w-full flex-col ${
+                estMoi ? "items-end" : "items-start"
+              }`}
             >
               <div
                 onClick={() => estMoi && setActionSur(m)}
-                className={estMoi ? "cursor-pointer" : ""}
+                className={`max-w-[85%] ${estMoi ? "cursor-pointer" : ""}`}
               >
                 {m.kind === "gif" && m.body ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -367,7 +382,7 @@ export default function ChatRoom({
                   <ImageMessage message={m} estMoi={estMoi} onOuvrir={marquerOuverte} />
                 ) : (
                   <div
-                    className={`max-w-[80%] whitespace-pre-wrap break-words rounded-bulle px-4 py-2.5 text-[15px] leading-relaxed ${
+                    className={`w-fit whitespace-pre-wrap rounded-bulle px-4 py-2.5 text-[15px] leading-relaxed [overflow-wrap:anywhere] ${
                       estMoi
                         ? "bg-gradient-to-br from-bordeaux to-bordeaux-vif text-white"
                         : "border border-bord bg-velours-clair text-champagne"
@@ -463,7 +478,8 @@ export default function ChatRoom({
           </button>
 
           <textarea
-            className="champ max-h-32 min-h-[44px] flex-1 resize-none py-3"
+            ref={zoneRef}
+            className="champ min-h-[44px] flex-1 resize-none overflow-y-auto py-3 leading-relaxed"
             rows={1}
             placeholder="Dis-lui…"
             value={texte}
