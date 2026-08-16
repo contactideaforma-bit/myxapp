@@ -14,15 +14,15 @@ export default async function KamasutraPage() {
 
   const { data: couple } = await supabase
     .from("couples")
-    .select("id, member_b")
+    .select("id, member_b, illustration_mode")
     .or(`member_a.eq.${user.id},member_b.eq.${user.id}`)
-    .maybeSingle();
+    .maybeSingle<{ id: string; member_b: string | null; illustration_mode: string }>();
 
   if (!couple || !couple.member_b) redirect("/pair");
 
   return (
     <AppShell>
-      <Kamasutra />
+      <Kamasutra modeInitial={couple.illustration_mode ?? "silhouette"} />
     </AppShell>
   );
 }

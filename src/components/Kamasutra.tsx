@@ -3,7 +3,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Silhouette from "./Silhouette";
-import { POSITIONS, type Position } from "@/data/positions";
+
+export type PositionDB = {
+  key: string;
+  nom: string;
+  sous_titre: string | null;
+  description: string | null;
+  conseil: string | null;
+  difficulte: number;
+  intensite: number;
+  figure: string | null;
+  image_path: string | null;
+  image_credit: string | null;
+  image_source_url: string | null;
+  ordre: number;
+};
 
 type Marque = {
   pos_key: string;
@@ -31,20 +45,64 @@ const FILTRES = [
   { cle: "coups", label: "🔥 Coups de cœur" },
 ] as const;
 
-export default function Kamasutra() {
+/** Illustration importée, fondue dans la charte : inversée puis teintée. */
+function Duotone({ src, className = "" }: { src: string; className?: string }) {
+  return (
+    <div className={`relative overflow-hidden bg-nuit ${className}`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt=""
+        draggable={false}
+        onContextMenu={(e) => e.preventDefault()}
+        className="h-full w-full object-contain opacity-90 grayscale invert contrast-110"
+      />
+      <span className="pointer-events-none absolute inset-0 bg-bordeaux mix-blend-color" />
+      <span className="pointer-events-none absolute inset-0 bg-orrose/20 mix-blend-soft-light" />
+    </div>
+  );
+}
+
+export default function Kamasutra({ modeInitial }: { modeInitial: string }) {
   const [supabase] = useState(() => createClient());
+
+  const [positions, setPositions] = useState<PositionDB[]>([]);
+  const [urls, setUrls] = useState<Record<string, string>>({});
   const [marques, setMarques] = useState<Record<string, Omit<Marque, "pos_key">>>({});
+  const [mode, setMode] = useState(modeInitial);
   const [filtre, setFiltre] = useState<(typeof FILTRES)[number]["cle"]>("toutes");
-  const [ouverte, setOuverte] = useState<Position | null>(null);
+  const [ouverte, setOuverte] = useState<PositionDB | null>(null);
+  const [credits, setCredits] = useState(false);
   const [charge, setCharge] = useState(true);
 
+  /* ------------------------------------------------ Chargement */
   const charger = useCallback(async () => {
-    const { data } = await supabase.rpc("positions_overview");
+    const [{ data: pos }, { data: mk }] = await Promise.all([
+      supabase.from("positions").select("*").eq("active", true).order("ordre"),
+      supabase.rpc("positions_overview"),
+    ]);
+
+    const liste = (pos ?? []) as PositionDB[];
+    setPositions(liste);
+
     const table: Record<string, Omit<Marque, "pos_key">> = {};
-    ((data ?? []) as Marque[]).forEach(({ pos_key, ...reste }) => {
+    ((mk ?? []) as Marque[]).forEach(({ pos_key, ...reste }) => {
       table[pos_key] = reste;
     });
     setMarques(table);
+
+    const chemins = liste.map((p) => p.image_path).filter(Boolean) as string[];
+    if (chemins.length) {
+      const { data: signees } = await supabase.storage
+        .from("positions")
+        .createSignedUrls(chemins, 3600);
+      const u: Record<string, string> = {};
+      (signees ?? []).forEach((s) => {
+        if (s.signedUrl && s.path) u[s.path] = s.signedUrl;
+      });
+      setUrls(u);
+    }
+
     setCharge(false);
   }, [supabase]);
 
@@ -52,18 +110,15 @@ export default function Kamasutra() {
     charger();
   }, [charger]);
 
-  const etat = (key: string) => marques[key] ?? VIDE;
+  const etat = useCallback(
+    (key: string) => marques[key] ?? VIDE,
+    [marques]
+  );
 
   async function basculer(key: string, champ: "wants" | "done" | "loved") {
     const actuel = etat(key);
     const valeur = !actuel[`my_${champ}` as keyof typeof actuel];
-
-    // Optimiste : on n'invente pas la reciprocite, elle revient du serveur
-    setMarques((p) => ({
-      ...p,
-      [key]: { ...(p[key] ?? VIDE), [`my_${champ}`]: valeur },
-    }));
-
+    setMarques((p) => ({ ...p, [key]: { ...(p[key] ?? VIDE), [`my_${champ}`]: valeur } }));
     await supabase.rpc("set_position_mark", {
       p_key: key,
       p_wants: champ === "wants" ? valeur : null,
@@ -73,18 +128,32 @@ export default function Kamasutra() {
     charger();
   }
 
-  const liste = useMemo(() => {
-    return POSITIONS.filter((p) => {
-      const e = etat(p.key);
-      if (filtre === "communes") return e.both_want;
-      if (filtre === "testees") return e.my_done || e.partner_done;
-      if (filtre === "coups") return e.my_loved || e.partner_loved;
-      return true;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtre, marques]);
+  async function changerMode(nouveau: string) {
+    setMode(nouveau);
+    await supabase.rpc("set_illustration_mode", { p_mode: nouveau });
+  }
 
-  const communes = POSITIONS.filter((p) => etat(p.key).both_want).length;
+  const liste = useMemo(
+    () =>
+      positions.filter((p) => {
+        const e = etat(p.key);
+        if (filtre === "communes") return e.both_want;
+        if (filtre === "testees") return e.my_done || e.partner_done;
+        if (filtre === "coups") return e.my_loved || e.partner_loved;
+        return true;
+      }),
+    [positions, filtre, etat]
+  );
+
+  const communes = positions.filter((p) => etat(p.key).both_want).length;
+  const illustrees = positions.filter((p) => p.image_path).length;
+
+  /** Visuel d'une position selon le mode choisi, avec repli automatique. */
+  const visuel = (p: PositionDB, classe: string) => {
+    const url = p.image_path ? urls[p.image_path] : null;
+    if (mode === "detaillee" && url) return <Duotone src={url} className={classe} />;
+    return <Silhouette figure={p.figure ?? p.key} className={classe} />;
+  };
 
   return (
     <div className="mx-auto max-w-md px-4 py-6">
@@ -101,6 +170,25 @@ export default function Kamasutra() {
           </p>
         )}
       </header>
+
+      {/* Mode d'illustration */}
+      <div className="mb-4 flex items-center gap-1 rounded-xl border border-bord bg-velours-clair p-1 text-xs">
+        {[
+          { cle: "silhouette", label: "Silhouettes", aide: "discret" },
+          { cle: "detaillee", label: "Illustrations", aide: `${illustrees} dispo` },
+        ].map((m) => (
+          <button
+            key={m.cle}
+            onClick={() => changerMode(m.cle)}
+            className={`flex-1 rounded-lg py-2 transition ${
+              mode === m.cle ? "bg-bordeaux text-white" : "text-brume hover:text-champagne"
+            }`}
+          >
+            {m.label}
+            <span className="ml-1 opacity-60">· {m.aide}</span>
+          </button>
+        ))}
+      </div>
 
       <div className="mb-4 flex gap-2 overflow-x-auto pb-1 text-xs">
         {FILTRES.map((f) => (
@@ -136,7 +224,7 @@ export default function Kamasutra() {
               className="anim-monte carte overflow-hidden p-0 text-left transition hover:border-bordeaux-vif"
             >
               <div className="relative bg-velours-clair">
-                <Silhouette figure={p.key} className="h-28 w-full" />
+                {visuel(p, "h-28 w-full")}
                 <div className="absolute right-2 top-2 flex gap-1 text-xs">
                   {e.both_want && <span title="Envie commune">✨</span>}
                   {(e.my_loved || e.partner_loved) && <span title="Coup de cœur">🔥</span>}
@@ -145,14 +233,23 @@ export default function Kamasutra() {
               </div>
               <div className="p-3">
                 <p className="font-display text-base leading-tight">{p.nom}</p>
-                <p className="mt-0.5 text-[11px] text-brume">{p.sousTitre}</p>
+                <p className="mt-0.5 text-[11px] text-brume">{p.sous_titre}</p>
               </div>
             </button>
           );
         })}
       </div>
 
-      {/* ------------------------------------------------ Fiche detaillee */}
+      {mode === "detaillee" && illustrees > 0 && (
+        <button
+          onClick={() => setCredits(true)}
+          className="mx-auto mt-6 block text-[11px] text-brume underline"
+        >
+          Crédits et licences des illustrations
+        </button>
+      )}
+
+      {/* ------------------------------------------------ Fiche */}
       {ouverte && (
         <div
           className="fixed inset-0 z-40 flex items-end justify-center bg-nuit/85 backdrop-blur"
@@ -164,17 +261,16 @@ export default function Kamasutra() {
           >
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-bord" />
 
-            <Silhouette figure={ouverte.key} className="mx-auto h-40 w-full" />
+            {visuel(ouverte, "h-48 w-full rounded-2xl")}
 
-            <h2 className="mt-2 text-center font-display text-2xl">{ouverte.nom}</h2>
+            <h2 className="mt-3 text-center font-display text-2xl">{ouverte.nom}</h2>
             <p className="text-center text-xs uppercase tracking-[0.2em] text-brume">
-              {ouverte.sousTitre}
+              {ouverte.sous_titre}
             </p>
 
             <div className="mt-4 flex justify-center gap-6 text-[11px] text-brume">
               <span>
-                Difficulté{" "}
-                <b className="text-orrose">{"●".repeat(ouverte.difficulte)}</b>
+                Difficulté <b className="text-orrose">{"●".repeat(ouverte.difficulte)}</b>
                 <span className="opacity-30">{"●".repeat(3 - ouverte.difficulte)}</span>
               </span>
               <span>
@@ -183,14 +279,18 @@ export default function Kamasutra() {
               </span>
             </div>
 
-            <p className="mt-5 text-sm leading-relaxed text-champagne">
-              {ouverte.description}
-            </p>
+            {ouverte.description && (
+              <p className="mt-5 text-sm leading-relaxed text-champagne">
+                {ouverte.description}
+              </p>
+            )}
 
-            <p className="mt-4 rounded-xl border border-bord bg-velours-clair p-3 text-sm leading-relaxed text-brume">
-              <span className="text-orrose">Le détail qui compte — </span>
-              {ouverte.conseil}
-            </p>
+            {ouverte.conseil && (
+              <p className="mt-4 rounded-xl border border-bord bg-velours-clair p-3 text-sm leading-relaxed text-brume">
+                <span className="text-orrose">Le détail qui compte — </span>
+                {ouverte.conseil}
+              </p>
+            )}
 
             {(() => {
               const e = etat(ouverte.key);
@@ -223,10 +323,58 @@ export default function Kamasutra() {
               );
             })()}
 
-            <button
-              onClick={() => setOuverte(null)}
-              className="btn btn-fantome mt-5"
-            >
+            {ouverte.image_credit && mode === "detaillee" && (
+              <p className="mt-4 text-center text-[10px] leading-relaxed text-brume">
+                Illustration : {ouverte.image_credit}
+              </p>
+            )}
+
+            <button onClick={() => setOuverte(null)} className="btn btn-fantome mt-5">
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------ Crédits */}
+      {credits && (
+        <div
+          className="fixed inset-0 z-40 grid place-items-center bg-nuit/90 px-6 backdrop-blur"
+          onClick={() => setCredits(false)}
+        >
+          <div
+            className="carte max-h-[80dvh] w-full max-w-md overflow-y-auto p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="font-display text-xl">Crédits</h2>
+            <p className="mt-2 text-sm leading-relaxed text-brume">
+              Les illustrations détaillées proviennent de Wikimedia Commons et sont
+              réutilisées selon leur licence Creative Commons. Chaque auteur est
+              crédité ci-dessous.
+            </p>
+            <ul className="mt-4 space-y-2 text-[11px] text-brume">
+              {positions
+                .filter((p) => p.image_credit)
+                .map((p) => (
+                  <li key={p.key} className="border-b border-bord pb-2">
+                    <span className="text-champagne">{p.nom}</span> — {p.image_credit}
+                    {p.image_source_url && (
+                      <>
+                        {" · "}
+                        <a
+                          href={p.image_source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline"
+                        >
+                          source
+                        </a>
+                      </>
+                    )}
+                  </li>
+                ))}
+            </ul>
+            <button onClick={() => setCredits(false)} className="btn btn-fantome mt-5">
               Fermer
             </button>
           </div>
