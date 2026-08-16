@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import AppShell from "@/components/AppShell";
-import ChatRoom from "@/components/ChatRoom";
-import type { Couple, Message, Profile } from "@/lib/types";
+import ProfileForm from "@/components/ProfileForm";
+import type { Couple, Profile } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function ChatPage() {
+export default async function ProfilPage() {
   const supabase = await createClient();
 
   const {
@@ -24,23 +24,20 @@ export default async function ChatPage() {
 
   const partnerId = couple.member_a === user.id ? couple.member_b : couple.member_a;
 
-  const [{ data: partner }, { data: messages }] = await Promise.all([
+  const [{ data: moi }, { data: partenaire }, { data: pinPose }] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<Profile>(),
     supabase.from("profiles").select("*").eq("id", partnerId).maybeSingle<Profile>(),
-    supabase
-      .from("messages")
-      .select("*")
-      .eq("couple_id", couple.id)
-      .order("created_at", { ascending: true })
-      .limit(200),
+    supabase.rpc("has_gallery_pin"),
   ]);
 
   return (
-    <AppShell plein>
-      <ChatRoom
+    <AppShell>
+      <ProfileForm
         coupleId={couple.id}
-        userId={user.id}
-        partner={partner ?? { id: partnerId, display_name: "Mon amour", emoji: "🔥" }}
-        messagesInitiaux={(messages ?? []) as Message[]}
+        couple={couple}
+        moi={moi ?? { id: user.id, display_name: "Moi", emoji: "🔥" }}
+        partenaire={partenaire ?? { id: partnerId, display_name: "Mon amour", emoji: "🔥" }}
+        pinDejaPose={pinPose === true}
       />
     </AppShell>
   );

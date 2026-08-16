@@ -233,7 +233,7 @@ export default function ChatRoom({
   if (discret) return <PanicOverlay onExit={() => setDiscret(false)} />;
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="flex h-full flex-col">
       {/* EN-TÊTE */}
       <header className="flex items-center gap-3 border-b border-bord bg-velours/80 px-4 py-3 backdrop-blur">
         <div className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-bordeaux to-bordeaux-vif text-lg">

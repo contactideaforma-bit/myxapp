@@ -5,6 +5,8 @@ export type Couple = {
   invite_code: string | null;
   created_at: string;
   paired_at: string | null;
+  nickname: string | null;
+  since_date: string | null;
 };
 
 export type Message = {
@@ -25,4 +27,6 @@ export type Profile = {
   id: string;
   display_name: string;
   emoji: string;
+  avatar_path?: string | null;
+  bio?: string | null;
 };
