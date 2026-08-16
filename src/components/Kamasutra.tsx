@@ -171,7 +171,8 @@ export default function Kamasutra({ modeInitial }: { modeInitial: string }) {
         )}
       </header>
 
-      {/* Mode d'illustration */}
+      {/* Mode d'illustration — masque tant qu'aucune image n'est importee */}
+      {illustrees > 0 && (
       <div className="mb-4 flex items-center gap-1 rounded-xl border border-bord bg-velours-clair p-1 text-xs">
         {[
           { cle: "silhouette", label: "Silhouettes", aide: "discret" },
@@ -189,6 +190,7 @@ export default function Kamasutra({ modeInitial }: { modeInitial: string }) {
           </button>
         ))}
       </div>
+      )}
 
       <div className="mb-4 flex gap-2 overflow-x-auto pb-1 text-xs">
         {FILTRES.map((f) => (

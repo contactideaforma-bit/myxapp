@@ -1,0 +1,32 @@
+[
+  {
+    "inventaire": "scripts/commons-liste.json",
+    "fichier": "File:Wiki-missionary.svg",
+    "key": "etreinte",
+    "commentaire": "A verifier visuellement avant de garder"
+  },
+  {
+    "inventaire": "scripts/commons-liste.json",
+    "fichier": "File:Wiki-cowgirl.svg",
+    "key": "cavaliere",
+    "commentaire": "A verifier visuellement avant de garder"
+  },
+  {
+    "inventaire": "scripts/commons-liste.json",
+    "fichier": "File:Wiki-dstyle.png",
+    "key": "levrette",
+    "commentaire": "A verifier visuellement avant de garder"
+  },
+  {
+    "inventaire": "scripts/commons-liste.json",
+    "fichier": "File:Wiki-T-square.png",
+    "key": "ciseaux",
+    "commentaire": "A verifier visuellement avant de garder"
+  },
+  {
+    "inventaire": "scripts/commons-liste.json",
+    "fichier": "File:Wiki-Wiener-auster.png",
+    "key": "papillon",
+    "commentaire": "A verifier visuellement avant de garder"
+  }
+]

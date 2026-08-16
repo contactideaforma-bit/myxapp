@@ -136,13 +136,25 @@ async function importer() {
       if (!rep.ok) throw new Error(`telechargement ${rep.status}`);
       const buffer = Buffer.from(await rep.arrayBuffer());
 
-      const ext = (src.mime?.split("/")[1] || "png").replace("jpeg", "jpg");
+      // On se fie a l'URL reellement telechargee, pas au type declare :
+      // Commons sert les SVG sous forme de vignettes PNG.
+      const extUrl = (src.url.split("?")[0].split(".").pop() || "png").toLowerCase();
+      const ext = ["png", "jpg", "jpeg", "webp", "gif", "svg"].includes(extUrl)
+        ? extUrl.replace("jpeg", "jpg")
+        : "png";
+      const types = {
+        png: "image/png",
+        jpg: "image/jpeg",
+        webp: "image/webp",
+        gif: "image/gif",
+        svg: "image/svg+xml",
+      };
       const chemin = `${entree.key}.${ext}`;
 
       const { error: errUp } = await supabase.storage
         .from(BUCKET)
         .upload(chemin, buffer, {
-          contentType: src.mime || "image/png",
+          contentType: types[ext] ?? "image/png",
           upsert: true,
         });
       if (errUp) throw errUp;
