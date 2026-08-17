@@ -48,6 +48,8 @@ export default function ChatRoom({
   const [enDirect, setEnDirect] = useState(false);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [repondA, setRepondA] = useState<Message | null>(null);
+  const [enLigne, setEnLigne] = useState(false);
+  const [optionsOuvertes, setOptionsOuvertes] = useState(false);
 
   const finRef = useRef<HTMLDivElement>(null);
   const fichierRef = useRef<HTMLInputElement>(null);
@@ -84,8 +86,11 @@ export default function ChatRoom({
         .from("messages")
         .select("*")
         .eq("couple_id", coupleId)
+        .or(
+          `created_at.gte.${new Date(Date.now() - 24 * 3600_000).toISOString()},is_saved.eq.true`
+        )
         .order("created_at", { ascending: false })
-        .limit(60),
+        .limit(400),
       supabase.from("reactions").select("message_id, user_id, emoji"),
     ]);
     if (data) {
@@ -113,7 +118,7 @@ export default function ChatRoom({
       canal?.track({ id: userId, visible: document.visibilityState === "visible" });
       // Au retour au premier plan, on rattrape ce qu'on aurait manqué.
       if (document.visibilityState === "visible") {
-        supabase.rpc("mark_read");
+        void supabase.rpc("mark_read").then(() => {});
         rafraichir();
       }
     };
@@ -142,7 +147,7 @@ export default function ChatRoom({
             setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
             if (m.sender_id !== userId) {
               setPartenaireEcrit(false);
-              supabase.rpc("mark_read");
+              void supabase.rpc("mark_read").then(() => {});
             }
           }
         )
@@ -186,7 +191,7 @@ export default function ChatRoom({
         });
 
       canalRef.current = canal;
-      supabase.rpc("mark_read");
+      void supabase.rpc("mark_read").then(() => {});
 
       // Filet : si le canal ne s'etablit pas, on interroge la base.
       secours = setInterval(() => {
@@ -215,10 +220,27 @@ export default function ChatRoom({
     };
   }, [supabase, coupleId, userId, rafraichir, rafraichirReactions]);
 
+  /* ------------------------------------------------ Partenaire en ligne */
+  useEffect(() => {
+    let vivant = true;
+    const verifier = async () => {
+      const { data } = await supabase.rpc("partner_status");
+      if (vivant && data) setEnLigne((data as { en_ligne?: boolean }).en_ligne === true);
+    };
+    verifier();
+    const t = setInterval(verifier, 20_000);
+    return () => {
+      vivant = false;
+      clearInterval(t);
+    };
+  }, [supabase]);
+
   /* ------------------------------------------------ Purge des expirés */
   useEffect(() => {
-    supabase.rpc("purge_expired");
-    const t = setInterval(() => supabase.rpc("purge_expired"), 300_000);
+    void supabase.rpc("purge_expired").then(() => {});
+    const t = setInterval(() => {
+      void supabase.rpc("purge_expired").then(() => {});
+    }, 300_000);
     return () => clearInterval(t);
   }, [supabase]);
 
@@ -470,6 +492,14 @@ export default function ChatRoom({
       .upsert({ message_id: m.id, user_id: userId, emoji }, { onConflict: "message_id,user_id" });
   }
 
+  async function basculerGarde(m: Message) {
+    setActionSur(null);
+    if (m.enAttente) return;
+    const suivant = !m.is_saved;
+    setMessages((p) => p.map((x) => (x.id === m.id ? { ...x, is_saved: suivant } : x)));
+    await supabase.rpc("toggle_saved", { p_id: m.id });
+  }
+
   async function supprimer(m: Message) {
     setActionSur(null);
     setMessages((prev) => prev.filter((x) => x.id !== m.id));
@@ -501,16 +531,26 @@ export default function ChatRoom({
     <div className="flex h-full flex-col">
       {/* EN-TÊTE */}
       <header className="flex shrink-0 items-center gap-3 border-b border-bord bg-velours/80 px-4 py-3 backdrop-blur">
-        <div className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-bordeaux to-bordeaux-vif text-lg">
-          {partner.emoji || "🔥"}
+        <div className="relative">
+          <div className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-bordeaux to-bordeaux-vif text-lg">
+            {partner.emoji || "🔥"}
+          </div>
+          {enLigne && (
+            <span
+              className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-velours bg-emerald-400"
+              title="En ligne"
+            />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate font-display text-lg leading-tight">{partner.display_name}</p>
           <p className="text-xs text-brume">
             {partenaireEcrit ? (
               <span className="text-orrose">écrit…</span>
+            ) : enLigne ? (
+              <span className="text-emerald-400">En ligne</span>
             ) : enDirect ? (
-              "En direct"
+              "Hors ligne"
             ) : (
               <span className="opacity-60">Reconnexion…</span>
             )}
@@ -631,6 +671,7 @@ export default function ChatRoom({
                 </span>
                 {restant !== null && <span>· ⏳ {formaterDuree(restant)}</span>}
                 {m.view_once && <span>· 🔥</span>}
+                {m.is_saved && <span title="Conservé">· 📌</span>}
                 {estMoi && (
                   <span
                     className={m.read_at ? "text-orrose" : "text-brume"}
@@ -648,33 +689,13 @@ export default function ChatRoom({
 
       {/* COMPOSITEUR */}
       <footer className="shrink-0 border-t border-bord bg-velours/90 px-3 py-3 backdrop-blur">
-        <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-          <span className="shrink-0 text-brume">Durée</span>
-          {DUREES.map((d) => (
-            <button
-              key={d.valeur}
-              onClick={() => setDuree(d.valeur)}
-              className={`shrink-0 rounded-full border px-3 py-1 transition ${
-                duree === d.valeur
-                  ? "border-bordeaux-vif bg-bordeaux/30 text-orrose"
-                  : "border-bord text-brume"
-              }`}
-            >
-              {d.label}
-            </button>
-          ))}
-          <span className="ml-2 h-4 w-px shrink-0 bg-bord" />
-          <button
-            onClick={() => setVueUnique((v) => !v)}
-            className={`shrink-0 rounded-full border px-3 py-1 transition ${
-              vueUnique
-                ? "border-bordeaux-vif bg-bordeaux/30 text-orrose"
-                : "border-bord text-brume"
-            }`}
-          >
-            🔥 Photo vue unique
-          </button>
-        </div>
+        {(duree > 0 || vueUnique) && (
+          <p className="mb-1.5 px-1 text-[10px] text-orrose">
+            {duree > 0 && `⏳ disparaît après ${DUREES.find((d) => d.valeur === duree)?.label}`}
+            {duree > 0 && vueUnique && " · "}
+            {vueUnique && "🔥 photo vue unique"}
+          </p>
+        )}
 
         {repondA && (
           <div className="anim-monte mb-2 flex items-start gap-2 rounded-xl border-l-2 border-bordeaux-vif bg-velours-clair px-3 py-2">
@@ -708,25 +729,19 @@ export default function ChatRoom({
           />
           <button
             type="button"
-            onClick={() => fichierRef.current?.click()}
+            onClick={() => setOptionsOuvertes(true)}
             disabled={envoi}
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-bord text-lg text-orrose transition hover:border-bordeaux-vif"
-            title="Envoyer une photo"
+            className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border border-bord text-xl leading-none text-orrose transition ${
+              duree > 0 || vueUnique ? "border-bordeaux-vif bg-bordeaux/25" : ""
+            }`}
+            title="Options d'envoi"
           >
             +
-          </button>
-          <button
-            type="button"
-            onClick={() => setPickerOuvert(true)}
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-bord text-[10px] font-semibold tracking-wider text-orrose transition hover:border-bordeaux-vif"
-            title="GIF et bibliothèque"
-          >
-            GIF
           </button>
 
           <textarea
             ref={zoneRef}
-            className="champ min-h-[44px] flex-1 resize-none overflow-y-auto py-3 leading-relaxed"
+            className="champ min-h-[42px] flex-1 resize-none overflow-y-auto py-2.5 leading-relaxed"
             rows={1}
             placeholder="Dis-lui…"
             value={texte}
@@ -752,13 +767,90 @@ export default function ChatRoom({
               e.preventDefault();
               if (texte.trim() && !envoi) envoyerTexte(e);
             }}
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-bordeaux to-bordeaux-vif text-white disabled:opacity-40"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-bordeaux to-bordeaux-vif text-white transition disabled:opacity-40"
             title="Envoyer"
           >
             ↑
           </button>
         </form>
       </footer>
+
+      {optionsOuvertes && (
+        <div
+          className="fixed inset-0 z-40 flex items-end bg-nuit/80 backdrop-blur"
+          onClick={() => setOptionsOuvertes(false)}
+        >
+          <div
+            className="w-full rounded-t-3xl border-t border-bord bg-velours p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-bord" />
+
+            <div className="mb-5 grid grid-cols-2 gap-2">
+              <button
+                className="carte flex items-center gap-3 p-4 text-left"
+                onClick={() => {
+                  setOptionsOuvertes(false);
+                  fichierRef.current?.click();
+                }}
+              >
+                <span className="text-xl">🖼️</span>
+                <span className="text-sm">Photo</span>
+              </button>
+              <button
+                className="carte flex items-center gap-3 p-4 text-left"
+                onClick={() => {
+                  setOptionsOuvertes(false);
+                  setPickerOuvert(true);
+                }}
+              >
+                <span className="text-xl">🎞️</span>
+                <span className="text-sm">GIF</span>
+              </button>
+            </div>
+
+            <p className="mb-2 text-xs uppercase tracking-widest text-brume">
+              Durée de vie du message
+            </p>
+            <div className="mb-5 flex gap-2">
+              {DUREES.map((d) => (
+                <button
+                  key={d.valeur}
+                  onClick={() => setDuree(d.valeur)}
+                  className={`flex-1 rounded-xl border py-2.5 text-sm transition ${
+                    duree === d.valeur
+                      ? "border-bordeaux-vif bg-bordeaux/30 text-orrose"
+                      : "border-bord bg-velours-clair text-brume"
+                  }`}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setVueUnique((v) => !v)}
+              className={`w-full rounded-xl border px-4 py-3 text-left text-sm transition ${
+                vueUnique
+                  ? "border-bordeaux-vif bg-bordeaux/25 text-orrose"
+                  : "border-bord bg-velours-clair text-brume"
+              }`}
+            >
+              🔥 Photo à vue unique
+              <span className="block text-[11px] opacity-70">
+                Elle se consume dès qu&apos;elle est ouverte
+              </span>
+            </button>
+
+            <button
+              className="btn btn-fantome mt-4"
+              onClick={() => setOptionsOuvertes(false)}
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
 
       {pickerOuvert && (
         <GifPicker
@@ -820,6 +912,17 @@ export default function ChatRoom({
             >
               Répondre
             </button>
+
+            {!actionSur.enAttente && (
+              <button
+                className="btn btn-fantome mt-2"
+                onClick={() => basculerGarde(actionSur)}
+              >
+                {actionSur.is_saved
+                  ? "📌 Ne plus conserver"
+                  : "📌 Conserver ce message"}
+              </button>
+            )}
 
             {actionSur.sender_id === userId && !actionSur.enAttente && (
               <button

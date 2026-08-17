@@ -21,6 +21,7 @@ export type Message = {
   expires_at: string | null;
   read_at: string | null;
   reply_to?: string | null;
+  is_saved?: boolean;
   created_at: string;
   /** Present uniquement pour les messages pas encore confirmes par le serveur. */
   enAttente?: boolean;

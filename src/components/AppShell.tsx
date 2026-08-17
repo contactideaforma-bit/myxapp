@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 const ONGLETS = [
   { href: "/chat", label: "Nous", icone: "bulle" },
   { href: "/galerie", label: "Galerie", icone: "image" },
+  { href: "/intime", label: "Intime", icone: "flamme" },
   { href: "/jeux", label: "Jeux", icone: "de" },
   { href: "/idees", label: "Idées", icone: "etincelle" },
   { href: "/profil", label: "Profil", icone: "profil" },
@@ -115,7 +116,7 @@ export default function AppShell({
 
     const battre = () => {
       if (!vivant || document.visibilityState !== "visible") return;
-      supabase.rpc("ping_presence");
+      void supabase.rpc("ping_presence").then(() => {});
     };
 
     battre();
