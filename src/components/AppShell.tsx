@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useClavier } from "@/lib/useClavier";
+import { createClient } from "@/lib/supabase/client";
 
 const ONGLETS = [
   { href: "/chat", label: "Nous", icone: "bulle" },
@@ -103,6 +104,28 @@ export default function AppShell({
     return () => {
       document.removeEventListener("focusin", entree);
       document.removeEventListener("focusout", sortie);
+    };
+  }, []);
+
+  /* Battement de coeur : tant qu'une page de l'app est visible, on le dit
+     au serveur. C'est ce qui empeche les notifications inutiles. */
+  useEffect(() => {
+    const supabase = createClient();
+    let vivant = true;
+
+    const battre = () => {
+      if (!vivant || document.visibilityState !== "visible") return;
+      supabase.rpc("ping_presence");
+    };
+
+    battre();
+    const t = setInterval(battre, 25_000);
+    document.addEventListener("visibilitychange", battre);
+
+    return () => {
+      vivant = false;
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", battre);
     };
   }, []);
 

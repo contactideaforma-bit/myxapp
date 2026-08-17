@@ -37,6 +37,12 @@ export async function POST(request: Request) {
   const apercu: string = String(corps.apercu ?? "").slice(0, 90);
   const prenom: string = String(corps.prenom ?? "").slice(0, 40);
 
+  // Si l'autre a l'application sous les yeux, on ne notifie pas du tout.
+  const { data: actif } = await supabase.rpc("partner_is_active");
+  if (actif === true) {
+    return NextResponse.json({ envoyes: 0, raison: "partenaire actif" });
+  }
+
   const { data, error } = await supabase.rpc("partner_push_targets");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

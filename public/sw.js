@@ -30,9 +30,9 @@ self.addEventListener("push", (event) => {
         type: "window",
         includeUncontrolled: true,
       });
-      const active = fenetres.some(
-        (c) => c.visibilityState === "visible" && c.focused
-      );
+      // « focused » n'est pas renseigne de facon fiable sur iOS :
+      // la visibilite seule suffit comme critere.
+      const active = fenetres.some((c) => c.visibilityState === "visible");
       if (active) return;
 
       await self.registration.showNotification(titre, options);
