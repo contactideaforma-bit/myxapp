@@ -59,66 +59,68 @@ body {
   font-family: var(--font-display);
 }
 
-/* Champs de saisie */
-.champ {
-  width: 100%;
-  background: var(--color-velours-clair);
-  border: 1px solid var(--color-bord);
-  border-radius: 0.875rem;
-  padding: 0.875rem 1rem;
-  color: var(--color-champagne);
-  outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-.champ::placeholder {
-  color: var(--color-brume);
-}
-.champ:focus {
-  border-color: var(--color-bordeaux-vif);
-  box-shadow: 0 0 0 3px rgba(163, 46, 82, 0.25);
-}
+@layer components {
+  /* Champs de saisie */
+  .champ {
+    width: 100%;
+    background: var(--color-velours-clair);
+    border: 1px solid var(--color-bord);
+    border-radius: 0.875rem;
+    padding: 0.875rem 1rem;
+    color: var(--color-champagne);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .champ::placeholder {
+    color: var(--color-brume);
+  }
+  .champ:focus {
+    border-color: var(--color-bordeaux-vif);
+    box-shadow: 0 0 0 3px rgba(163, 46, 82, 0.25);
+  }
 
-/* Bouton principal */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.875rem 1.25rem;
-  border-radius: 0.875rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: #fff;
-  background: linear-gradient(135deg, var(--color-bordeaux) 0%, var(--color-bordeaux-vif) 100%);
-  box-shadow: 0 8px 30px -12px rgba(163, 46, 82, 0.9);
-  transition: transform 0.15s, filter 0.2s, opacity 0.2s;
-}
-.btn:hover:not(:disabled) {
-  filter: brightness(1.12);
-  transform: translateY(-1px);
-}
-.btn:active:not(:disabled) {
-  transform: translateY(0);
-}
-.btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
+  /* Bouton principal */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.875rem 1.25rem;
+    border-radius: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: #fff;
+    background: linear-gradient(135deg, var(--color-bordeaux) 0%, var(--color-bordeaux-vif) 100%);
+    box-shadow: 0 8px 30px -12px rgba(163, 46, 82, 0.9);
+    transition: transform 0.15s, filter 0.2s, opacity 0.2s;
+  }
+  .btn:hover:not(:disabled) {
+    filter: brightness(1.12);
+    transform: translateY(-1px);
+  }
+  .btn:active:not(:disabled) {
+    transform: translateY(0);
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
 
-.btn-fantome {
-  background: transparent;
-  border: 1px solid var(--color-bord);
-  box-shadow: none;
-  color: var(--color-orrose);
-}
+  .btn-fantome {
+    background: transparent;
+    border: 1px solid var(--color-bord);
+    box-shadow: none;
+    color: var(--color-orrose);
+  }
 
-/* Carte */
-.carte {
-  background: color-mix(in srgb, var(--color-velours) 88%, transparent);
-  border: 1px solid var(--color-bord);
-  border-radius: var(--radius-doux);
-  backdrop-filter: blur(12px);
+  /* Carte */
+  .carte {
+    background: color-mix(in srgb, var(--color-velours) 88%, transparent);
+    border: 1px solid var(--color-bord);
+    border-radius: var(--radius-doux);
+    backdrop-filter: blur(12px);
+  }
 }
 
 /* Animation d'apparition des bulles */

@@ -296,7 +296,7 @@ export default function ProfileForm({
 
         <div className="flex gap-2">
           <input
-            className="champ text-center font-display text-2xl tracking-[0.5em]"
+            className="champ min-w-0 flex-1 text-center font-display text-2xl tracking-[0.5em]"
             inputMode="numeric"
             placeholder="••••"
             maxLength={4}
@@ -304,7 +304,7 @@ export default function ProfileForm({
             onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
           />
           <button
-            className="btn w-auto shrink-0 px-5"
+            className="btn w-auto shrink-0 px-6"
             onClick={enregistrerPin}
             disabled={occupe || pin.length !== 4}
           >

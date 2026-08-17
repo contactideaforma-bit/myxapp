@@ -279,14 +279,14 @@ export default function Intime({
 
             <div className="mt-4 flex gap-2">
               <input
-                className="champ"
+                className="champ min-w-0 flex-1"
                 placeholder="Ajouter une envie…"
                 value={nouvelItem}
                 maxLength={160}
                 onChange={(e) => setNouvelItem(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && ajouterItem()}
               />
-              <button className="btn w-auto shrink-0 px-5" onClick={ajouterItem}>
+              <button className="btn w-auto shrink-0 px-6" onClick={ajouterItem}>
                 +
               </button>
             </div>
@@ -332,14 +332,14 @@ export default function Intime({
 
             <div className="mt-5 flex gap-2">
               <input
-                className="champ"
+                className="champ min-w-0 flex-1"
                 placeholder="Nom de la liste — « Cet été », « Un jour »…"
                 value={nouvelleListe}
                 maxLength={60}
                 onChange={(e) => setNouvelleListe(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && creerListe()}
               />
-              <button className="btn w-auto shrink-0 px-5" onClick={creerListe}>
+              <button className="btn w-auto shrink-0 px-6" onClick={creerListe}>
                 +
               </button>
             </div>

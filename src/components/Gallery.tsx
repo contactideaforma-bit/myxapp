@@ -11,6 +11,7 @@ type Item = {
   storage_path: string;
   caption: string | null;
   favorite: boolean;
+  kind: "image" | "video";
   created_at: string;
 };
 
@@ -165,9 +166,14 @@ export default function Gallery({
 
   /* ------------------------------------------------ Ajout / suppression */
   async function ajouter(fichier: File) {
-    if (!fichier.type.startsWith("image/")) return;
+    const estVideo = fichier.type.startsWith("video/");
+    if (!fichier.type.startsWith("image/") && !estVideo) return;
+    if (fichier.size > 100 * 1024 * 1024) {
+      setErreur("Fichier trop lourd — 100 Mo maximum.");
+      return;
+    }
     setOccupe(true);
-    const ext = fichier.name.split(".").pop()?.toLowerCase() || "jpg";
+    const ext = fichier.name.split(".").pop()?.toLowerCase() || (estVideo ? "mp4" : "jpg");
     const chemin = `${coupleId}/vault/${userId}-${Date.now()}.${ext}`;
 
     const { error: errUp } = await supabase.storage
@@ -181,6 +187,7 @@ export default function Gallery({
         couple_id: coupleId,
         uploader_id: userId,
         storage_path: chemin,
+        kind: estVideo ? "video" : "image",
       });
       if (error) setErreur(error.message);
       else await charger();
@@ -297,7 +304,7 @@ export default function Gallery({
         <div className="flex-1">
           <h1 className="font-display text-xl leading-tight">Galerie</h1>
           <p className="text-xs text-brume">
-            {items.length} photo{items.length > 1 ? "s" : ""} · session de 15 min
+            {items.length} élément{items.length > 1 ? "s" : ""} · session de 15 min
           </p>
         </div>
         <button
@@ -318,7 +325,7 @@ export default function Gallery({
       <input
         ref={fichierRef}
         type="file"
-        accept="image/*"
+        accept="image/*,video/*"
         hidden
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -336,7 +343,7 @@ export default function Gallery({
           <div className="mx-auto mt-20 max-w-xs text-center">
             <p className="font-display text-2xl text-orrose">Rien encore</p>
             <p className="mt-2 text-sm text-brume">
-              Ajoutez une première image. Elle ne quittera jamais ce coffre.
+              Ajoutez une photo ou une vidéo. Rien ne quittera ce coffre.
             </p>
           </div>
         )}
@@ -349,13 +356,30 @@ export default function Gallery({
               className="anim-monte relative aspect-square overflow-hidden rounded-xl border border-bord bg-velours-clair"
             >
               {urls[item.storage_path] ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={urls[item.storage_path]}
-                  alt=""
-                  className="h-full w-full object-cover"
-                  draggable={false}
-                />
+                item.kind === "video" ? (
+                  <>
+                    <video
+                      src={urls[item.storage_path]}
+                      className="h-full w-full object-cover"
+                      muted
+                      playsInline
+                      preload="metadata"
+                    />
+                    <span className="absolute inset-0 grid place-items-center">
+                      <span className="grid h-8 w-8 place-items-center rounded-full bg-nuit/70 text-xs text-champagne">
+                        ▶
+                      </span>
+                    </span>
+                  </>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={urls[item.storage_path]}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    draggable={false}
+                  />
+                )
               ) : (
                 <span className="grid h-full place-items-center text-brume">·</span>
               )}
@@ -380,17 +404,27 @@ export default function Gallery({
           </div>
 
           <div className="flex min-h-0 flex-1 items-center justify-center px-4">
-            {urls[ouvre.storage_path] && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={urls[ouvre.storage_path]}
-                alt=""
-                onClick={(e) => e.stopPropagation()}
-                onContextMenu={(e) => e.preventDefault()}
-                className="max-h-full max-w-full rounded-2xl object-contain"
-                draggable={false}
-              />
-            )}
+            {urls[ouvre.storage_path] &&
+              (ouvre.kind === "video" ? (
+                <video
+                  src={urls[ouvre.storage_path]}
+                  onClick={(e) => e.stopPropagation()}
+                  className="max-h-full max-w-full rounded-2xl"
+                  controls
+                  autoPlay
+                  playsInline
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={urls[ouvre.storage_path]}
+                  alt=""
+                  onClick={(e) => e.stopPropagation()}
+                  onContextMenu={(e) => e.preventDefault()}
+                  className="max-h-full max-w-full rounded-2xl object-contain"
+                  draggable={false}
+                />
+              ))}
           </div>
 
           <div
