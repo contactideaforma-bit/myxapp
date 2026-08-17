@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { Message, Profile } from "@/lib/types";
+import type { Message, Profile, Reaction } from "@/lib/types";
 import ImageMessage from "./ImageMessage";
 import PanicOverlay from "./PanicOverlay";
 import GifPicker from "./GifPicker";
+
+const EMOJIS_REACTION = ["❤️", "🔥", "😍", "😂", "😮", "👍"];
 
 const DUREES = [
   { label: "∞", valeur: 0 },
@@ -44,6 +46,8 @@ export default function ChatRoom({
   const [confirmerVidage, setConfirmerVidage] = useState(false);
   const [pickerOuvert, setPickerOuvert] = useState(false);
   const [enDirect, setEnDirect] = useState(false);
+  const [reactions, setReactions] = useState<Reaction[]>([]);
+  const [repondA, setRepondA] = useState<Message | null>(null);
 
   const finRef = useRef<HTMLDivElement>(null);
   const fichierRef = useRef<HTMLInputElement>(null);
@@ -75,14 +79,29 @@ export default function ChatRoom({
 
   /* ------------------------------------------------ Rechargement de secours */
   const rafraichir = useCallback(async () => {
-    const { data } = await supabase
-      .from("messages")
-      .select("*")
-      .eq("couple_id", coupleId)
-      .order("created_at", { ascending: false })
-      .limit(60);
-    if (data) setMessages([...(data as Message[])].reverse());
+    const [{ data }, { data: r }] = await Promise.all([
+      supabase
+        .from("messages")
+        .select("*")
+        .eq("couple_id", coupleId)
+        .order("created_at", { ascending: false })
+        .limit(60),
+      supabase.from("reactions").select("message_id, user_id, emoji"),
+    ]);
+    if (data) {
+      // On conserve les messages encore en cours d'envoi.
+      setMessages((prev) => {
+        const enVol = prev.filter((m) => m.enAttente);
+        return [...[...(data as Message[])].reverse(), ...enVol];
+      });
+    }
+    if (r) setReactions(r as Reaction[]);
   }, [supabase, coupleId]);
+
+  const rafraichirReactions = useCallback(async () => {
+    const { data } = await supabase.from("reactions").select("message_id, user_id, emoji");
+    if (data) setReactions(data as Reaction[]);
+  }, [supabase]);
 
   /* ------------------------------------------------ Temps réel */
   useEffect(() => {
@@ -144,6 +163,11 @@ export default function ChatRoom({
             setMessages((prev) => prev.filter((x) => x.id !== ancien.id));
           }
         )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "reactions" },
+          () => rafraichirReactions()
+        )
         .on("broadcast", { event: "typing" }, ({ payload }) => {
           if (payload?.from === userId) return;
           setPartenaireEcrit(true);
@@ -189,7 +213,7 @@ export default function ChatRoom({
       if (canal) supabase.removeChannel(canal);
       canalRef.current = null;
     };
-  }, [supabase, coupleId, userId, rafraichir]);
+  }, [supabase, coupleId, userId, rafraichir, rafraichirReactions]);
 
   /* ------------------------------------------------ Purge des expirés */
   useEffect(() => {
@@ -198,10 +222,25 @@ export default function ChatRoom({
     return () => clearInterval(t);
   }, [supabase]);
 
-  /* ------------------------------------------------ Défilement auto */
+  /* ------------------------------------------------ Défilement auto
+     On ne ramène en bas que si l'on y était déjà : sinon, remonter dans
+     l'historique devient impossible dès qu'un message arrive. */
+  const filRef = useRef<HTMLElement>(null);
+  const enBasRef = useRef(true);
+
   useEffect(() => {
-    finRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [visibles.length, partenaireEcrit]);
+    const el = filRef.current;
+    if (!el) return;
+    const surDefilement = () => {
+      enBasRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    };
+    el.addEventListener("scroll", surDefilement, { passive: true });
+    return () => el.removeEventListener("scroll", surDefilement);
+  }, []);
+
+  useEffect(() => {
+    if (enBasRef.current) finRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [visibles.length, partenaireEcrit, reactions.length]);
 
   /* ------------------------------------------------ Mode discret */
   useEffect(() => {
@@ -211,6 +250,14 @@ export default function ChatRoom({
     window.addEventListener("keydown", surTouche);
     return () => window.removeEventListener("keydown", surTouche);
   }, []);
+
+  const parId = useMemo(
+    () => Object.fromEntries(messages.map((m) => [m.id, m])) as Record<string, Message>,
+    [messages]
+  );
+
+  const apercuDe = (m?: Message | null) =>
+    !m ? "" : m.kind === "image" ? "📷 Photo" : m.kind === "gif" ? "GIF" : m.body ?? "";
 
   /* ------------------------------------------------ Actions */
   /** Le champ grandit avec le texte, jusqu'a 6 lignes. */
@@ -261,8 +308,32 @@ export default function ChatRoom({
     e.preventDefault();
     const corps = texte.trim();
     if (!corps || envoi) return;
-    setEnvoi(true);
+
+    const cible = repondA;
+    const provisoire = `local-${Date.now()}`;
+    const expiration = calculerExpiration();
+
+    // La bulle apparait tout de suite : plus aucune latence ressentie.
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: provisoire,
+        couple_id: coupleId,
+        sender_id: userId,
+        kind: "text",
+        body: corps,
+        storage_path: null,
+        view_once: false,
+        opened_at: null,
+        expires_at: expiration,
+        read_at: null,
+        reply_to: cible?.id ?? null,
+        created_at: new Date().toISOString(),
+        enAttente: true,
+      },
+    ]);
     setTexte("");
+    setRepondA(null);
 
     const { data, error } = await supabase
       .from("messages")
@@ -271,18 +342,24 @@ export default function ChatRoom({
         sender_id: userId,
         kind: "text",
         body: corps,
-        expires_at: calculerExpiration(),
+        expires_at: expiration,
+        reply_to: cible?.id ?? null,
       })
       .select()
       .single();
 
     if (!error && data) {
+      // On remplace la bulle provisoire par la vraie.
       setMessages((prev) =>
-        prev.some((x) => x.id === data.id) ? prev : [...prev, data as Message]
+        prev
+          .filter((m) => m.id !== provisoire)
+          .concat(prev.some((x) => x.id === data.id) ? [] : [data as Message])
       );
       prevenir("message", corps);
+    } else {
+      setMessages((prev) => prev.filter((m) => m.id !== provisoire));
+      setTexte(corps);
     }
-    setEnvoi(false);
     zoneRef.current?.focus();
   }
 
@@ -370,6 +447,29 @@ export default function ChatRoom({
     );
   }
 
+  /** Une réaction par personne : le même emoji retire, un autre remplace. */
+  async function reagir(m: Message, emoji: string) {
+    setActionSur(null);
+    if (m.enAttente) return;
+    const actuelle = reactions.find(
+      (r) => r.message_id === m.id && r.user_id === userId
+    );
+
+    if (actuelle?.emoji === emoji) {
+      setReactions((p) => p.filter((r) => !(r.message_id === m.id && r.user_id === userId)));
+      await supabase.from("reactions").delete().eq("message_id", m.id).eq("user_id", userId);
+      return;
+    }
+
+    setReactions((p) => [
+      ...p.filter((r) => !(r.message_id === m.id && r.user_id === userId)),
+      { message_id: m.id, user_id: userId, emoji },
+    ]);
+    await supabase
+      .from("reactions")
+      .upsert({ message_id: m.id, user_id: userId, emoji }, { onConflict: "message_id,user_id" });
+  }
+
   async function supprimer(m: Message) {
     setActionSur(null);
     setMessages((prev) => prev.filter((x) => x.id !== m.id));
@@ -440,7 +540,7 @@ export default function ChatRoom({
       </header>
 
       {/* FIL */}
-      <main className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-6">
+      <main ref={filRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-6">
         {visibles.length === 0 && (
           <div className="mx-auto mt-16 max-w-xs text-center">
             <p className="font-display text-2xl text-orrose">Le silence…</p>
@@ -464,9 +564,23 @@ export default function ChatRoom({
               }`}
             >
               <div
-                onClick={() => estMoi && setActionSur(m)}
-                className={`max-w-[85%] ${estMoi ? "cursor-pointer" : ""}`}
+                onClick={() => setActionSur(m)}
+                className="max-w-[85%] cursor-pointer"
               >
+                {m.reply_to && (
+                  <div
+                    className={`mb-1 rounded-xl border-l-2 border-bordeaux-vif px-3 py-1.5 text-[11px] leading-snug ${
+                      estMoi ? "bg-bordeaux/20 text-champagne/80" : "bg-velours-clair text-brume"
+                    }`}
+                  >
+                    <span className="block text-[9px] uppercase tracking-widest text-orrose">
+                      {parId[m.reply_to]?.sender_id === userId ? "Vous" : partner.display_name}
+                    </span>
+                    <span className="line-clamp-2 block">
+                      {apercuDe(parId[m.reply_to]) || "Message supprimé"}
+                    </span>
+                  </div>
+                )}
                 {m.kind === "gif" && m.body ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -490,6 +604,24 @@ export default function ChatRoom({
                 )}
               </div>
 
+              {(() => {
+                const mes = reactions.filter((r) => r.message_id === m.id);
+                if (!mes.length) return null;
+                return (
+                  <div className={`-mt-1.5 flex gap-1 px-1 ${estMoi ? "justify-end" : ""}`}>
+                    {mes.map((r) => (
+                      <span
+                        key={r.user_id}
+                        className="rounded-full border border-bord bg-velours px-1.5 py-0.5 text-xs shadow"
+                        title={r.user_id === userId ? "Vous" : partner.display_name}
+                      >
+                        {r.emoji}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+
               <div className="mt-1 flex items-center gap-1.5 px-1 text-[10px] text-brume">
                 <span>
                   {new Date(m.created_at).toLocaleTimeString("fr-FR", {
@@ -504,7 +636,7 @@ export default function ChatRoom({
                     className={m.read_at ? "text-orrose" : "text-brume"}
                     title={m.read_at ? "Vu" : "Envoyé"}
                   >
-                    · {m.read_at ? "✓✓ Vu" : "✓ Envoyé"}
+                    · {m.enAttente ? "envoi…" : m.read_at ? "✓✓ Vu" : "✓ Envoyé"}
                   </span>
                 )}
               </div>
@@ -543,6 +675,24 @@ export default function ChatRoom({
             🔥 Photo vue unique
           </button>
         </div>
+
+        {repondA && (
+          <div className="anim-monte mb-2 flex items-start gap-2 rounded-xl border-l-2 border-bordeaux-vif bg-velours-clair px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-widest text-orrose">
+                Réponse à {repondA.sender_id === userId ? "vous-même" : partner.display_name}
+              </p>
+              <p className="truncate text-xs text-brume">{apercuDe(repondA)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRepondA(null)}
+              className="shrink-0 text-lg leading-none text-brume"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         <form onSubmit={envoyerTexte} className="flex items-end gap-2">
           <input
@@ -631,13 +781,59 @@ export default function ChatRoom({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-bord" />
+
+            <div className="mb-4 flex gap-1.5">
+              {EMOJIS_REACTION.map((emoji) => {
+                const mienne = reactions.some(
+                  (r) =>
+                    r.message_id === actionSur.id &&
+                    r.user_id === userId &&
+                    r.emoji === emoji
+                );
+                return (
+                  <button
+                    key={emoji}
+                    onClick={() => reagir(actionSur, emoji)}
+                    className={`grid h-12 flex-1 place-items-center rounded-2xl border text-2xl transition active:scale-90 ${
+                      mienne
+                        ? "border-orrose bg-bordeaux/30"
+                        : "border-bord bg-velours-clair"
+                    }`}
+                  >
+                    {emoji}
+                  </button>
+                );
+              })}
+            </div>
+
             <p className="mb-4 truncate text-center text-sm text-brume">
-              {actionSur.kind === "image" ? "Photo" : actionSur.body}
+              {apercuDe(actionSur)}
             </p>
-            <button className="btn" onClick={() => supprimer(actionSur)}>
-              Supprimer pour nous deux
+
+            <button
+              className="btn"
+              onClick={() => {
+                setRepondA(actionSur);
+                setActionSur(null);
+                setTimeout(() => zoneRef.current?.focus(), 50);
+              }}
+            >
+              Répondre
             </button>
-            <button className="btn btn-fantome mt-2" onClick={() => setActionSur(null)}>
+
+            {actionSur.sender_id === userId && !actionSur.enAttente && (
+              <button
+                className="btn btn-fantome mt-2"
+                onClick={() => supprimer(actionSur)}
+              >
+                Supprimer pour nous deux
+              </button>
+            )}
+
+            <button
+              className="btn btn-fantome mt-2"
+              onClick={() => setActionSur(null)}
+            >
               Annuler
             </button>
           </div>

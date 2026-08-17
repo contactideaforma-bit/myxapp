@@ -14,3 +14,7 @@ tsconfig.tsbuildinfo
 
 # Residus du montage de fichiers
 .fuse_hidden*
+
+# Jamais de document dans public/ : ce dossier est servi publiquement
+*.pdf
+_a_supprimer/

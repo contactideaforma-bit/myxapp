@@ -20,7 +20,16 @@ export type Message = {
   opened_at: string | null;
   expires_at: string | null;
   read_at: string | null;
+  reply_to?: string | null;
   created_at: string;
+  /** Present uniquement pour les messages pas encore confirmes par le serveur. */
+  enAttente?: boolean;
+};
+
+export type Reaction = {
+  message_id: string;
+  user_id: string;
+  emoji: string;
 };
 
 export type Profile = {
