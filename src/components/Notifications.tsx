@@ -27,6 +27,11 @@ export default function Notifications({
   const [styleNotif, setStyleNotif] = useState(styleInitial);
   const [message, setMessage] = useState<string | null>(null);
   const [autonome, setAutonome] = useState(true);
+  const [diag, setDiag] = useState<{
+    battement: string | null;
+    partenaire: boolean | null;
+    erreur: string | null;
+  } | null>(null);
 
   const cle = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
@@ -101,6 +106,26 @@ export default function Notifications({
     setOccupe(false);
   }
 
+  /** Diagnostic : le battement de coeur arrive-t-il, et l'autre est-il vu ? */
+  async function diagnostiquer() {
+    setDiag(null);
+    const [{ data: moi, error: e1 }, { data: actif, error: e2 }] = await Promise.all([
+      supabase.from("profiles").select("last_active_at").eq("id", userId).maybeSingle(),
+      supabase.rpc("partner_is_active"),
+    ]);
+
+    const erreur =
+      e2?.message?.includes("does not exist") || e2?.message?.includes("PGRST202")
+        ? "La fonction partner_is_active est absente : la migration 018 n'a pas été exécutée."
+        : e2?.message ?? e1?.message ?? null;
+
+    setDiag({
+      battement: (moi as { last_active_at?: string } | null)?.last_active_at ?? null,
+      partenaire: typeof actif === "boolean" ? actif : null,
+      erreur,
+    });
+  }
+
   async function changerStyle(v: string) {
     setStyleNotif(v);
     await supabase.from("profiles").update({ notif_style: v }).eq("id", userId);
@@ -172,6 +197,49 @@ export default function Notifications({
       </div>
 
       {message && <p className="text-sm text-orrose">{message}</p>}
+
+      {/* ---------------------------------------------- Diagnostic */}
+      <div className="border-t border-bord pt-4">
+        <button
+          onClick={diagnostiquer}
+          className="text-xs text-brume underline"
+        >
+          Vérifier pourquoi je reçois des notifications
+        </button>
+
+        {diag && (
+          <div className="mt-3 space-y-1.5 rounded-xl border border-bord bg-velours-clair p-3 text-[11px] leading-relaxed">
+            {diag.erreur ? (
+              <p className="text-orrose">⚠ {diag.erreur}</p>
+            ) : (
+              <>
+                <p>
+                  <span className="text-brume">Mon battement : </span>
+                  {diag.battement ? (
+                    <span className="text-champagne">
+                      il y a{" "}
+                      {Math.round((Date.now() - new Date(diag.battement).getTime()) / 1000)} s
+                    </span>
+                  ) : (
+                    <span className="text-orrose">jamais enregistré</span>
+                  )}
+                </p>
+                <p>
+                  <span className="text-brume">Partenaire vu récemment : </span>
+                  <span className={diag.partenaire ? "text-champagne" : "text-orrose"}>
+                    {diag.partenaire ? "oui — aucune notification ne partira" : "non"}
+                  </span>
+                </p>
+                <p className="pt-1 text-brume">
+                  Si « Mon battement » indique « jamais enregistré », la migration 018
+                  n&apos;a pas été appliquée. S&apos;il indique plus de 60 s alors que
+                  vous êtes sur cette page, le battement ne part pas.
+                </p>
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
