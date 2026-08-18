@@ -54,6 +54,7 @@ export async function POST(request: Request) {
     photo: "Une photo vous attend",
     gif: "Nouveau message",
     idee: "Une nouvelle idée",
+    humeur: "Quelqu'un pense à vous",
     defi: "Un défi vous attend",
   };
 

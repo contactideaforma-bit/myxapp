@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { compresserImage, poidsLisible } from "@/lib/compression";
 
 type Item = {
   id: string;
@@ -169,14 +170,22 @@ export default function Gallery({
   }
 
   /* ------------------------------------------------ Ajout / suppression */
-  async function ajouter(fichier: File) {
-    const estVideo = fichier.type.startsWith("video/");
-    if (!fichier.type.startsWith("image/") && !estVideo) return;
+  async function ajouter(brut: File) {
+    const estVideo = brut.type.startsWith("video/");
+    if (!brut.type.startsWith("image/") && !estVideo) return;
+    setOccupe(true);
+
+    // Les photos sont allégées ici ; les vidéos ne peuvent pas l'être
+    // dans le navigateur, on prévient clairement.
+    const fichier = estVideo ? brut : await compresserImage(brut);
     if (fichier.size > 100 * 1024 * 1024) {
-      setErreur("Fichier trop lourd — 100 Mo maximum.");
+      setErreur(
+        `Fichier trop lourd (${poidsLisible(fichier.size)}) — 100 Mo maximum. ` +
+          "Filmez plus court, ou réduisez la qualité vidéo dans les Réglages de l'iPhone."
+      );
+      setOccupe(false);
       return;
     }
-    setOccupe(true);
     const ext = fichier.name.split(".").pop()?.toLowerCase() || (estVideo ? "mp4" : "jpg");
     const chemin = `${coupleId}/vault/${userId}-${Date.now()}.${ext}`;
 

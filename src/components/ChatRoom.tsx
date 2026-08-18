@@ -8,6 +8,8 @@ import ImageMessage from "./ImageMessage";
 import PanicOverlay from "./PanicOverlay";
 import GifPicker from "./GifPicker";
 import AudioBubble from "./AudioBubble";
+import Humeur from "./Humeur";
+import { compresserImage } from "@/lib/compression";
 
 const EMOJIS_REACTION = ["❤️", "🔥", "😍", "😂", "😮", "👍"];
 
@@ -52,6 +54,7 @@ export default function ChatRoom({
   const [enLigne, setEnLigne] = useState(false);
   const [optionsOuvertes, setOptionsOuvertes] = useState(false);
   const [enregistrement, setEnregistrement] = useState(false);
+  const [souvenirs, setSouvenirs] = useState(false);
   const [secondes, setSecondes] = useState(0);
   const recRef = useRef<MediaRecorder | null>(null);
   const morceauxRef = useRef<Blob[]>([]);
@@ -391,10 +394,12 @@ export default function ChatRoom({
     zoneRef.current?.focus();
   }
 
-  async function envoyerImage(fichier: File) {
-    if (!fichier.type.startsWith("image/")) return;
+  async function envoyerImage(brut: File) {
+    if (!brut.type.startsWith("image/")) return;
     setEnvoi(true);
 
+    // Allégée dans le navigateur : l'envoi est plusieurs fois plus rapide.
+    const fichier = await compresserImage(brut);
     const ext = fichier.name.split(".").pop()?.toLowerCase() || "jpg";
     const chemin = `${coupleId}/${userId}-${Date.now()}.${ext}`;
 
@@ -647,6 +652,20 @@ export default function ChatRoom({
             )}
           </p>
         </div>
+        <Humeur
+          coupleId={coupleId}
+          userId={userId}
+          partenaire={partner.display_name}
+        />
+
+        <button
+          onClick={() => setSouvenirs(true)}
+          title="Messages conservés"
+          className="rounded-lg border border-bord px-2.5 py-1.5 text-xs text-brume transition hover:border-bordeaux-vif"
+        >
+          📌
+        </button>
+
         <button
           onClick={() => setConfirmerVidage(true)}
           title="Vider la conversation"
@@ -661,13 +680,7 @@ export default function ChatRoom({
         >
           👁️
         </button>
-        <button
-          onClick={deconnexion}
-          title="Se déconnecter"
-          className="rounded-lg border border-bord px-2.5 py-1.5 text-xs text-brume"
-        >
-          ⏻
-        </button>
+
       </header>
 
       {/* FIL */}
@@ -909,6 +922,69 @@ export default function ChatRoom({
           </button>
         </form>
       </footer>
+
+      {souvenirs && (
+        <div
+          className="fixed inset-0 z-40 flex items-end bg-nuit/85 backdrop-blur"
+          onClick={() => setSouvenirs(false)}
+        >
+          <div
+            className="max-h-[82dvh] w-full overflow-y-auto rounded-t-3xl border-t border-bord bg-velours p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-bord" />
+            <h2 className="titre-section font-display text-2xl">Souvenirs</h2>
+            <p className="mt-1 text-xs leading-relaxed text-brume">
+              Ce que vous avez épinglé. Le reste s&apos;efface après 24 heures.
+            </p>
+
+            <div className="mt-4 space-y-2">
+              {messages.filter((m) => m.is_saved).length === 0 && (
+                <p className="py-10 text-center text-sm text-brume">
+                  Rien d&apos;épinglé. Touchez un message puis « Conserver ».
+                </p>
+              )}
+              {messages
+                .filter((m) => m.is_saved)
+                .map((m) => (
+                  <div
+                    key={m.id}
+                    className={`rounded-xl border px-4 py-3 ${
+                      m.sender_id === userId
+                        ? "border-bordeaux-vif/50 bg-bordeaux/15"
+                        : "border-bord bg-velours-clair"
+                    }`}
+                  >
+                    <p className="text-sm leading-relaxed [overflow-wrap:anywhere]">
+                      {m.kind === "text"
+                        ? m.body
+                        : m.kind === "audio"
+                          ? "🎙 Message vocal"
+                          : m.kind === "gif"
+                            ? "GIF"
+                            : "📷 Photo"}
+                    </p>
+                    <p className="mt-1.5 flex items-center gap-2 text-[10px] text-brume">
+                      <span>{m.sender_id === userId ? "Vous" : partner.display_name}</span>
+                      <span>
+                        {new Date(m.created_at).toLocaleDateString("fr-FR", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </p>
+                  </div>
+                ))}
+            </div>
+
+            <button className="btn btn-fantome mt-5" onClick={() => setSouvenirs(false)}>
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
 
       {optionsOuvertes && (
         <div
