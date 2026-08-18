@@ -13,7 +13,7 @@ export type Message = {
   id: string;
   couple_id: string;
   sender_id: string;
-  kind: "text" | "image" | "gif";
+  kind: "text" | "image" | "gif" | "audio";
   body: string | null;
   storage_path: string | null;
   view_once: boolean;
@@ -22,6 +22,7 @@ export type Message = {
   read_at: string | null;
   reply_to?: string | null;
   is_saved?: boolean;
+  duree_ms?: number | null;
   created_at: string;
   /** Present uniquement pour les messages pas encore confirmes par le serveur. */
   enAttente?: boolean;

@@ -36,6 +36,10 @@ export default function Gallery({
   const [items, setItems] = useState<Item[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [ouvre, setOuvre] = useState<Item | null>(null);
+  const [commentaires, setCommentaires] = useState<
+    { id: string; item_id: string; auteur: string | null; texte: string; created_at: string }[]
+  >([]);
+  const [nouveauCom, setNouveauCom] = useState("");
   const [occupe, setOccupe] = useState(false);
   const [chargement, setChargement] = useState(false);
 
@@ -194,6 +198,42 @@ export default function Gallery({
     }
     setOccupe(false);
     armerMinuterie();
+  }
+
+  /* ------------------------------------------------ Commentaires */
+  const chargerCommentaires = useCallback(
+    async (itemId: string) => {
+      const { data } = await supabase
+        .from("gallery_comments")
+        .select("id, item_id, auteur, texte, created_at")
+        .eq("item_id", itemId)
+        .order("created_at");
+      setCommentaires(data ?? []);
+    },
+    [supabase]
+  );
+
+  useEffect(() => {
+    if (ouvre) chargerCommentaires(ouvre.id);
+    else setCommentaires([]);
+  }, [ouvre, chargerCommentaires]);
+
+  async function commenter() {
+    const t = nouveauCom.trim();
+    if (!t || !ouvre) return;
+    setNouveauCom("");
+    await supabase.from("gallery_comments").insert({
+      item_id: ouvre.id,
+      couple_id: coupleId,
+      auteur: userId,
+      texte: t,
+    });
+    chargerCommentaires(ouvre.id);
+  }
+
+  async function supprimerCommentaire(id: string) {
+    setCommentaires((p) => p.filter((c) => c.id !== id));
+    await supabase.from("gallery_comments").delete().eq("id", id);
   }
 
   async function basculerFavori(item: Item) {
@@ -428,7 +468,66 @@ export default function Gallery({
           </div>
 
           <div
-            className="flex items-center justify-center gap-3 p-6"
+            className="max-h-[38dvh] shrink-0 overflow-y-auto border-t border-bord bg-velours/95 px-4 py-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="mb-2 text-[10px] uppercase tracking-widest text-brume">
+              {commentaires.length
+                ? `${commentaires.length} commentaire${commentaires.length > 1 ? "s" : ""}`
+                : "Aucun commentaire"}
+            </p>
+
+            <div className="space-y-2">
+              {commentaires.map((c) => {
+                const deMoi = c.auteur === userId;
+                return (
+                  <div
+                    key={c.id}
+                    className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${
+                      deMoi
+                        ? "border-bordeaux-vif/60 bg-bordeaux/20"
+                        : "border-bord bg-velours-clair"
+                    }`}
+                  >
+                    <span
+                      className="mt-0.5 h-2 w-2 shrink-0 rounded-full"
+                      style={{
+                        background: deMoi
+                          ? "var(--color-bordeaux-vif)"
+                          : "var(--color-amethyste)",
+                      }}
+                    />
+                    <span className="min-w-0 flex-1 text-sm leading-snug">{c.texte}</span>
+                    {deMoi && (
+                      <button
+                        onClick={() => supprimerCommentaire(c.id)}
+                        className="shrink-0 text-xs text-brume"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <input
+                className="champ min-w-0 flex-1"
+                placeholder="Un mot sur cette image…"
+                value={nouveauCom}
+                maxLength={280}
+                onChange={(e) => setNouveauCom(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && commenter()}
+              />
+              <button className="btn w-auto shrink-0 px-5" onClick={commenter}>
+                ↑
+              </button>
+            </div>
+          </div>
+
+          <div
+            className="flex shrink-0 items-center justify-center gap-3 p-4"
             onClick={(e) => e.stopPropagation()}
           >
             <button

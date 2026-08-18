@@ -7,12 +7,12 @@ import { useClavier } from "@/lib/useClavier";
 import { createClient } from "@/lib/supabase/client";
 
 const ONGLETS = [
-  { href: "/chat", label: "Nous", icone: "bulle" },
-  { href: "/galerie", label: "Galerie", icone: "image" },
-  { href: "/intime", label: "Intime", icone: "flamme" },
-  { href: "/jeux", label: "Jeux", icone: "de" },
-  { href: "/idees", label: "Idées", icone: "etincelle" },
-  { href: "/profil", label: "Profil", icone: "profil" },
+  { href: "/chat", label: "Nous", icone: "bulle", accent: "var(--color-bordeaux-vif)", halo: "rgba(196,53,99,0.28)" },
+  { href: "/galerie", label: "Galerie", icone: "image", accent: "var(--color-amethyste)", halo: "rgba(168,107,216,0.26)" },
+  { href: "/intime", label: "Intime", icone: "flamme", accent: "var(--color-fuchsia)", halo: "rgba(255,77,141,0.26)" },
+  { href: "/jeux", label: "Jeux", icone: "de", accent: "var(--color-ambre)", halo: "rgba(245,166,91,0.22)" },
+  { href: "/idees", label: "Idées", icone: "etincelle", accent: "var(--color-cyan)", halo: "rgba(91,214,232,0.20)" },
+  { href: "/profil", label: "Profil", icone: "profil", accent: "var(--color-orrose)", halo: "rgba(240,188,168,0.18)" },
 ] as const;
 
 function Icone({ nom, actif }: { nom: string; actif: boolean }) {
@@ -131,6 +131,43 @@ export default function AppShell({
   }, []);
 
   const clavierOuvert = clavier > 0 || saisie;
+  const actuel = ONGLETS.find((o) => chemin === o.href) ?? ONGLETS[0];
+  const [nouveautes, setNouveautes] = useState<Record<string, number>>({});
+
+  /* Pastilles : ce que l'autre a produit depuis ma dernière visite. */
+  useEffect(() => {
+    const supabase = createClient();
+    let vivant = true;
+
+    const relever = async () => {
+      const { data } = await supabase.rpc("nouveautes");
+      if (vivant && data) setNouveautes(data as Record<string, number>);
+    };
+
+    // Entrer dans une rubrique la marque comme vue.
+    const rubrique = chemin.replace("/", "");
+    if (["galerie", "intime", "jeux", "idees"].includes(rubrique)) {
+      supabase
+        .rpc("marquer_vu", { p_rubrique: rubrique })
+        .then(() => relever());
+    } else {
+      relever();
+    }
+
+    const t = setInterval(relever, 30_000);
+    return () => {
+      vivant = false;
+      clearInterval(t);
+    };
+  }, [chemin]);
+
+  /* La teinte du halo suit la section : l'app change d'ambiance d'un
+     onglet à l'autre sans jamais sortir de la charte. */
+  useEffect(() => {
+    const r = document.documentElement;
+    r.style.setProperty("--accent", actuel.accent);
+    r.style.setProperty("--halo-1", actuel.halo);
+  }, [actuel]);
 
   return (
     <div
@@ -155,16 +192,25 @@ export default function AppShell({
               <li key={o.href} className="flex-1">
                 <Link
                   href={o.href}
-                  className={`flex flex-col items-center gap-1 py-2.5 transition ${
-                    actif ? "text-orrose" : "text-brume hover:text-champagne"
-                  }`}
+                  className="relative flex flex-col items-center gap-1 py-2.5 transition"
+                  style={{ color: actif ? o.accent : undefined }}
                 >
-                  <Icone nom={o.icone} actif={actif} />
-                  <span className="text-[10px] tracking-wide">{o.label}</span>
+                  <span className={`relative ${actif ? "" : "text-brume"}`}>
+                    <Icone nom={o.icone} actif={actif} />
+                    {(() => {
+                      const n = nouveautes[o.href.replace("/", "")] ?? 0;
+                      if (!n || actif) return null;
+                      return <span className="pastille">{n > 9 ? "9+" : n}</span>;
+                    })()}
+                  </span>
                   <span
-                    className={`h-0.5 w-6 rounded-full transition ${
-                      actif ? "bg-bordeaux-vif" : "bg-transparent"
-                    }`}
+                    className={`text-[10px] tracking-wide ${actif ? "" : "text-brume"}`}
+                  >
+                    {o.label}
+                  </span>
+                  <span
+                    className="h-0.5 w-6 rounded-full transition"
+                    style={{ background: actif ? o.accent : "transparent" }}
                   />
                 </Link>
               </li>

@@ -7,6 +7,7 @@ import type { Message, Profile, Reaction } from "@/lib/types";
 import ImageMessage from "./ImageMessage";
 import PanicOverlay from "./PanicOverlay";
 import GifPicker from "./GifPicker";
+import AudioBubble from "./AudioBubble";
 
 const EMOJIS_REACTION = ["❤️", "🔥", "😍", "😂", "😮", "👍"];
 
@@ -50,6 +51,11 @@ export default function ChatRoom({
   const [repondA, setRepondA] = useState<Message | null>(null);
   const [enLigne, setEnLigne] = useState(false);
   const [optionsOuvertes, setOptionsOuvertes] = useState(false);
+  const [enregistrement, setEnregistrement] = useState(false);
+  const [secondes, setSecondes] = useState(0);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const morceauxRef = useRef<Blob[]>([]);
+  const debutRef = useRef(0);
 
   const finRef = useRef<HTMLDivElement>(null);
   const fichierRef = useRef<HTMLInputElement>(null);
@@ -462,6 +468,91 @@ export default function ChatRoom({
     }
   }
 
+  /* ------------------------------------------------ Message vocal */
+  async function demarrerVocal() {
+    try {
+      const flux = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Safari ne connait pas webm : on prend le premier format supporté.
+      const type = ["audio/webm", "audio/mp4", "audio/ogg"].find((t) =>
+        MediaRecorder.isTypeSupported(t)
+      );
+      const rec = new MediaRecorder(flux, type ? { mimeType: type } : undefined);
+      morceauxRef.current = [];
+      debutRef.current = Date.now();
+
+      rec.ondataavailable = (e) => {
+        if (e.data.size) morceauxRef.current.push(e.data);
+      };
+      rec.onstop = async () => {
+        flux.getTracks().forEach((t) => t.stop());
+        const duree = Date.now() - debutRef.current;
+        if (duree < 700) return; // appui trop bref : on ignore
+        const blob = new Blob(morceauxRef.current, { type: rec.mimeType });
+        await envoyerVocal(blob, duree, rec.mimeType);
+      };
+
+      rec.start();
+      recRef.current = rec;
+      setEnregistrement(true);
+      setSecondes(0);
+    } catch {
+      setActionSur(null);
+      alert("Micro indisponible. Autorisez l'accès dans les réglages du navigateur.");
+    }
+  }
+
+  function arreterVocal(annuler = false) {
+    const rec = recRef.current;
+    setEnregistrement(false);
+    if (!rec) return;
+    if (annuler) {
+      rec.onstop = null;
+      rec.stream.getTracks().forEach((t) => t.stop());
+    }
+    if (rec.state !== "inactive") rec.stop();
+    recRef.current = null;
+  }
+
+  async function envoyerVocal(blob: Blob, dureeMs: number, mime: string) {
+    setEnvoi(true);
+    const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm";
+    const chemin = `${coupleId}/${userId}-${Date.now()}.${ext}`;
+
+    const { error: errUp } = await supabase.storage
+      .from("intimate")
+      .upload(chemin, blob, { contentType: mime, upsert: false });
+
+    if (!errUp) {
+      const { data } = await supabase
+        .from("messages")
+        .insert({
+          couple_id: coupleId,
+          sender_id: userId,
+          kind: "audio",
+          storage_path: chemin,
+          duree_ms: dureeMs,
+          expires_at: calculerExpiration(),
+          reply_to: repondA?.id ?? null,
+        })
+        .select()
+        .single();
+      if (data) {
+        setRepondA(null);
+        setMessages((prev) =>
+          prev.some((x) => x.id === data.id) ? prev : [...prev, data as Message]
+        );
+        prevenir("message", "Message vocal");
+      }
+    }
+    setEnvoi(false);
+  }
+
+  useEffect(() => {
+    if (!enregistrement) return;
+    const t = setInterval(() => setSecondes((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [enregistrement]);
+
   async function marquerOuverte(id: string) {
     await supabase.rpc("open_view_once", { p_message_id: id });
     setMessages((prev) =>
@@ -621,7 +712,9 @@ export default function ChatRoom({
                     </span>
                   </div>
                 )}
-                {m.kind === "gif" && m.body ? (
+                {m.kind === "audio" ? (
+                  <AudioBubble message={m} estMoi={estMoi} />
+                ) : m.kind === "gif" && m.body ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={m.body}
@@ -689,6 +782,26 @@ export default function ChatRoom({
 
       {/* COMPOSITEUR */}
       <footer className="shrink-0 border-t border-bord bg-velours/90 px-3 py-3 backdrop-blur">
+        {enregistrement && (
+          <div className="anim-monte mb-2 flex items-center gap-3 rounded-xl border border-bordeaux-vif bg-bordeaux/25 px-4 py-2.5">
+            <span
+              className="h-2.5 w-2.5 rounded-full bg-bordeaux-vif"
+              style={{ animation: "pulse-doux 1s infinite" }}
+            />
+            <span className="flex-1 text-sm text-orrose">
+              Enregistrement… {Math.floor(secondes / 60)}:
+              {String(secondes % 60).padStart(2, "0")}
+            </span>
+            <button
+              type="button"
+              onClick={() => arreterVocal(true)}
+              className="text-xs text-brume underline"
+            >
+              Annuler
+            </button>
+          </div>
+        )}
+
         {(duree > 0 || vueUnique) && (
           <p className="mb-1.5 px-1 text-[10px] text-orrose">
             {duree > 0 && `⏳ disparaît après ${DUREES.find((d) => d.valeur === duree)?.label}`}
@@ -757,6 +870,26 @@ export default function ChatRoom({
             }}
           />
 
+          {!texte.trim() && (
+            <button
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                demarrerVocal();
+              }}
+              onPointerUp={() => arreterVocal()}
+              onPointerLeave={() => enregistrement && arreterVocal()}
+              className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border text-base transition ${
+                enregistrement
+                  ? "border-transparent bg-bordeaux-vif text-white"
+                  : "border-bord text-orrose"
+              }`}
+              title="Maintenir pour enregistrer"
+            >
+              🎙
+            </button>
+          )}
+
           <button
             type="submit"
             disabled={!texte.trim() || envoi}
@@ -767,7 +900,9 @@ export default function ChatRoom({
               e.preventDefault();
               if (texte.trim() && !envoi) envoyerTexte(e);
             }}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-bordeaux to-bordeaux-vif text-white transition disabled:opacity-40"
+            className={`grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-bordeaux to-bordeaux-vif text-white transition ${
+              texte.trim() ? "" : "hidden"
+            }`}
             title="Envoyer"
           >
             ↑

@@ -14,15 +14,26 @@ export default async function IntimePage() {
 
   const { data: couple } = await supabase
     .from("couples")
-    .select("id, member_b")
+    .select("id, member_a, member_b")
     .or(`member_a.eq.${user.id},member_b.eq.${user.id}`)
     .maybeSingle();
 
   if (!couple || !couple.member_b) redirect("/pair");
 
+  const partnerId = couple.member_a === user.id ? couple.member_b : couple.member_a;
+  const { data: p } = await supabase
+    .from("profiles")
+    .select("id, display_name")
+    .eq("id", partnerId)
+    .maybeSingle();
+
   return (
     <AppShell>
-      <Intime coupleId={couple.id} userId={user.id} />
+      <Intime
+        coupleId={couple.id}
+        userId={user.id}
+        partenaire={{ id: partnerId, nom: p?.display_name ?? "Votre moitié" }}
+      />
     </AppShell>
   );
 }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type Liste = { id: string; titre: string; emoji: string };
-type Item = { id: string; list_id: string; texte: string; rang: number };
+type Item = { id: string; list_id: string; texte: string; rang: number; created_by: string | null };
 type Etat = { item_id: string; ma_coche: boolean; les_deux: boolean };
 type Scenario = {
   id: string;
@@ -20,10 +20,30 @@ const EMOJIS = ["🔥", "🌙", "💋", "🖤", "🌹", "😈", "⚡", "🍒"];
 export default function Intime({
   coupleId,
   userId,
+  partenaire,
 }: {
   coupleId: string;
   userId: string;
+  partenaire: { id: string; nom: string };
 }) {
+  /** Pastille de couleur : bordeaux pour moi, améthyste pour l'autre. */
+  const Signature = ({ auteur }: { auteur: string | null }) => {
+    const deMoi = auteur === userId;
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest">
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{
+            background: deMoi ? "var(--color-bordeaux-vif)" : "var(--color-amethyste)",
+          }}
+        />
+        <span style={{ color: deMoi ? "var(--color-orrose)" : "var(--color-amethyste)" }}>
+          {auteur === null ? "—" : deMoi ? "Vous" : partenaire.nom}
+        </span>
+      </span>
+    );
+  };
+
   const [supabase] = useState(() => createClient());
   const [onglet, setOnglet] = useState<"fantasmes" | "scenarios">("fantasmes");
 
@@ -49,7 +69,7 @@ export default function Intime({
       const [{ data: i }, { data: e }] = await Promise.all([
         supabase
           .from("fantasy_items")
-          .select("id, list_id, texte, rang")
+          .select("id, list_id, texte, rang, created_by")
           .eq("list_id", listeId)
           .order("rang"),
         supabase.rpc("fantasy_overview", { p_list: listeId }),
@@ -111,7 +131,7 @@ export default function Intime({
     setNouvelItem("");
     await supabase
       .from("fantasy_items")
-      .insert({ list_id: ouverte.id, texte: t, rang: items.length });
+      .insert({ list_id: ouverte.id, texte: t, rang: items.length, created_by: userId });
     await chargerItems(ouverte.id);
   }
 
@@ -214,9 +234,16 @@ export default function Intime({
               setOuverte(null);
               setEdite(null);
             }}
-            className={`flex-1 rounded-lg py-2 capitalize transition ${
-              onglet === o ? "bg-bordeaux text-white" : "text-brume"
-            }`}
+            className="flex-1 rounded-lg py-2 font-medium capitalize transition"
+            style={
+              onglet === o
+                ? {
+                    background:
+                      "linear-gradient(135deg, var(--color-bordeaux), var(--color-fuchsia))",
+                    color: "#fff",
+                  }
+                : { color: "var(--color-brume)" }
+            }
           >
             {o === "fantasmes" ? "Fantasmes" : "Scénarios"}
           </button>
@@ -264,7 +291,10 @@ export default function Intime({
                     >
                       {e?.ma_coche ? "✓" : ""}
                     </button>
-                    <span className="min-w-0 flex-1 text-sm">{item.texte}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm leading-snug">{item.texte}</span>
+                      <Signature auteur={item.created_by} />
+                    </span>
                     {e?.les_deux && <span title="Vous deux">✨</span>}
                     <button
                       onClick={() => supprimerItem(item)}
@@ -301,7 +331,7 @@ export default function Intime({
         ) : (
           <>
             <header className="mb-5 text-center">
-              <h1 className="font-display text-3xl">Fantasmes</h1>
+              <h1 className="titre-section font-display text-4xl">Fantasmes</h1>
               <p className="mt-1 text-sm text-brume">
                 Des listes à cocher, chacun de son côté.
                 <br />
@@ -314,9 +344,17 @@ export default function Intime({
                 <button
                   key={l.id}
                   onClick={() => setOuverte(l)}
-                  className="carte anim-monte flex w-full items-center gap-3 p-4 text-left transition hover:border-bordeaux-vif"
+                  className="carte anim-monte flex w-full items-center gap-3 p-4 text-left transition hover:border-fuchsia"
                 >
-                  <span className="text-xl">{l.emoji}</span>
+                  <span
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-lg"
+                    style={{
+                      background:
+                        "linear-gradient(140deg, var(--color-bordeaux), var(--color-fuchsia))",
+                    }}
+                  >
+                    {l.emoji}
+                  </span>
                   <span className="min-w-0 flex-1 truncate font-display text-lg">
                     {l.titre}
                   </span>
@@ -378,7 +416,7 @@ export default function Intime({
         ) : (
           <>
             <header className="mb-5 text-center">
-              <h1 className="font-display text-3xl">Scénarios</h1>
+              <h1 className="titre-section font-display text-4xl">Scénarios</h1>
               <p className="mt-1 text-sm text-brume">
                 Vos textes, écrits à deux ou en secret.
               </p>
@@ -404,6 +442,9 @@ export default function Intime({
                     <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-brume">
                       {s.contenu.slice(0, 180) || "Vide"}
                     </p>
+                    <span className="mt-2 block">
+                      <Signature auteur={s.auteur} />
+                    </span>
                   </button>
                   <div className="mt-3 flex items-center gap-2 border-t border-bord pt-2 text-[11px] text-brume">
                     <span>
