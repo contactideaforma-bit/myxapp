@@ -59,17 +59,29 @@ export default function Gallery({
     const liste = (data ?? []) as Item[];
     setItems(liste);
 
+    // On ne resigne que ce qu'on n'a pas déjà : rechargements instantanés.
     if (liste.length) {
-      const { data: signees } = await supabase.storage
-        .from("intimate")
-        .createSignedUrls(liste.map((i) => i.storage_path), 3600);
-      const table: Record<string, string> = {};
-      (signees ?? []).forEach((s) => {
-        if (s.signedUrl && s.path) table[s.path] = s.signedUrl;
+      setUrls((deja) => {
+        const manquants = liste
+          .map((i) => i.storage_path)
+          .filter((c) => !deja[c]);
+        if (manquants.length) {
+          supabase.storage
+            .from("intimate")
+            .createSignedUrls(manquants, 3600)
+            .then(({ data }) => {
+              if (!data) return;
+              setUrls((p) => {
+                const suite = { ...p };
+                data.forEach((x) => {
+                  if (x.signedUrl && x.path) suite[x.path] = x.signedUrl;
+                });
+                return suite;
+              });
+            });
+        }
+        return deja;
       });
-      setUrls(table);
-    } else {
-      setUrls({});
     }
     setChargement(false);
   }, [supabase, coupleId]);
@@ -385,14 +397,22 @@ export default function Gallery({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {chargement && items.length === 0 && (
-          <p className="mt-16 text-center text-sm text-brume">Ouverture…</p>
+          <div className="vide">
+            <span className="vide-emoji" style={{ animation: "pulse-doux 1.4s infinite" }}>
+              🔓
+            </span>
+            <p className="text-sm text-brume">Ouverture…</p>
+          </div>
         )}
 
         {!chargement && items.length === 0 && (
-          <div className="mx-auto mt-20 max-w-xs text-center">
-            <p className="font-display text-2xl text-orrose">Rien encore</p>
-            <p className="mt-2 text-sm text-brume">
-              Ajoutez une photo ou une vidéo. Rien ne quittera ce coffre.
+          <div className="vide anim-monte">
+            <span className="vide-emoji">🖼️</span>
+            <p className="titre-section font-display text-2xl">Rien encore</p>
+            <p className="max-w-[16rem] text-sm leading-relaxed text-brume">
+              Ajoutez une photo ou une vidéo.
+              <br />
+              Rien ne quittera ce coffre.
             </p>
           </div>
         )}
@@ -402,7 +422,7 @@ export default function Gallery({
             <button
               key={item.id}
               onClick={() => setOuvre(item)}
-              className="anim-monte relative aspect-square overflow-hidden rounded-xl border border-bord bg-velours-clair"
+              className="anim-monte rangee relative aspect-square overflow-hidden rounded-xl border border-bord bg-velours-clair transition hover:border-amethyste"
             >
               {urls[item.storage_path] ? (
                 item.kind === "video" ? (

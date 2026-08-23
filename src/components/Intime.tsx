@@ -344,7 +344,7 @@ export default function Intime({
                 <button
                   key={l.id}
                   onClick={() => setOuverte(l)}
-                  className="carte anim-monte flex w-full items-center gap-3 p-4 text-left transition hover:border-fuchsia"
+                  className="carte anim-monte rangee flex w-full items-center gap-3 p-4 text-left transition hover:border-fuchsia"
                 >
                   <span
                     className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-lg"
@@ -362,9 +362,14 @@ export default function Intime({
                 </button>
               ))}
               {listes.length === 0 && (
-                <p className="py-10 text-center text-sm text-brume">
-                  Aucune liste. Créez la première.
-                </p>
+                <div className="vide">
+                  <span className="vide-emoji">🔥</span>
+                  <p className="max-w-[16rem] text-sm leading-relaxed text-brume">
+                    Aucune liste pour l&apos;instant.
+                    <br />
+                    « Cet été », « Un jour », « Ce soir »…
+                  </p>
+                </div>
               )}
             </div>
 
@@ -472,9 +477,14 @@ export default function Intime({
                 </article>
               ))}
               {scenarios.length === 0 && (
-                <p className="py-10 text-center text-sm text-brume">
-                  Rien encore écrit.
-                </p>
+                <div className="vide">
+                  <span className="vide-emoji">🌙</span>
+                  <p className="max-w-[16rem] text-sm leading-relaxed text-brume">
+                    Rien encore écrit.
+                    <br />
+                    Ce que vous poserez ici ne sortira jamais d&apos;ici.
+                  </p>
+                </div>
               )}
             </div>
           </>

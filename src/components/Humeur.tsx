@@ -81,14 +81,14 @@ export default function Humeur({
 
       {ouvert && (
         <div
-          className="fixed inset-0 z-40 flex items-end bg-nuit/85 backdrop-blur"
+          className="voile voile-bas"
           onClick={() => setOuvert(false)}
         >
           <div
-            className="w-full rounded-t-3xl border-t border-bord bg-velours p-5"
+            className="feuille max-h-[86dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-bord" />
+            <div className="poignee" />
 
             <h2 className="titre-section font-display text-2xl">Ce soir</h2>
             <p className="mt-1 text-xs leading-relaxed text-brume">

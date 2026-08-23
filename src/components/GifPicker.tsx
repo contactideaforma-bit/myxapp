@@ -108,14 +108,14 @@ export default function GifPicker({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-end bg-nuit/80 backdrop-blur"
+      className="voile voile-bas"
       onClick={onFermer}
     >
       <div
         className="flex h-[70dvh] w-full flex-col rounded-t-3xl border-t border-bord bg-velours"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mx-auto my-3 h-1 w-10 shrink-0 rounded-full bg-bord" />
+        <div className="poignee" />
 
         <div className="mx-4 mb-3 flex shrink-0 rounded-xl bg-velours-clair p-1 text-sm">
           {(["giphy", "nous"] as const).map((o) => (

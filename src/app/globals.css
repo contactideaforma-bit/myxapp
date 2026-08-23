@@ -186,7 +186,7 @@ body {
   }
 }
 .anim-monte {
-  animation: monte 0.28s ease-out both;
+  animation: fondu-monte 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes pulse-doux {
@@ -201,4 +201,103 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--color-bord);
   border-radius: 999px;
+}
+
+/* =====================================================================
+   MOUVEMENT
+   Une seule grammaire d'animation pour toute l'app. Tout se plie à
+   prefers-reduced-motion : personne ne doit subir le mouvement.
+   ===================================================================== */
+@keyframes voile-entre {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes feuille-monte {
+  from { transform: translateY(12%); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+@keyframes fondu-monte {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@layer components {
+  /* Voile derrière un panneau */
+  .voile {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    background: color-mix(in srgb, var(--color-nuit) 82%, transparent);
+    backdrop-filter: blur(14px);
+    animation: voile-entre 0.18s ease-out both;
+  }
+  .voile-bas { align-items: flex-end; }
+  .voile-centre { align-items: center; justify-content: center; padding: 1.5rem; }
+
+  /* Panneau qui monte du bas */
+  .feuille {
+    width: 100%;
+    border-top: 1px solid var(--color-bord);
+    border-top-left-radius: 1.75rem;
+    border-top-right-radius: 1.75rem;
+    background: linear-gradient(
+      180deg,
+      var(--color-velours-clair) 0%,
+      var(--color-velours) 40%
+    );
+    padding: 0.75rem 1.25rem calc(1.5rem + env(safe-area-inset-bottom));
+    box-shadow: 0 -24px 60px -30px rgba(0, 0, 0, 0.95);
+    animation: feuille-monte 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* La poignée, toujours au même endroit */
+  .poignee {
+    margin: 0 auto 1rem;
+    height: 0.25rem;
+    width: 2.75rem;
+    border-radius: 999px;
+    background: var(--color-bord);
+  }
+
+  /* Écran vide soigné */
+  .vide {
+    display: grid;
+    place-items: center;
+    gap: 0.5rem;
+    padding: 4rem 1.5rem;
+    text-align: center;
+  }
+  .vide-emoji {
+    font-size: 2rem;
+    opacity: 0.7;
+    filter: saturate(0.8);
+  }
+}
+
+/* Appui : tout ce qui se touche réagit */
+button:active:not(:disabled),
+[role="button"]:active {
+  transform: scale(0.975);
+}
+button, [role="button"] {
+  transition: transform 0.12s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Les longues listes ne peignent que ce qui est visible */
+.rangee {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 64px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

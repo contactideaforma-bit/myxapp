@@ -313,7 +313,13 @@ export default function Kamasutra({
         ))}
       </div>
 
-      {charge && <p className="py-16 text-center text-sm text-brume">…</p>}
+      {charge && (
+        <div className="vide">
+          <span className="vide-emoji" style={{ animation: "pulse-doux 1.4s infinite" }}>
+            🕯️
+          </span>
+        </div>
+      )}
 
       {!charge && liste.length === 0 && (
         <p className="py-16 text-center text-sm text-brume">
@@ -359,14 +365,14 @@ export default function Kamasutra({
       {/* ------------------------------------------------ Fiche */}
       {ouverte && (
         <div
-          className="fixed inset-0 z-40 flex items-end justify-center bg-nuit/85 backdrop-blur"
+          className="voile voile-bas"
           onClick={() => setOuverte(null)}
         >
           <div
-            className="max-h-[88dvh] w-full max-w-md overflow-y-auto rounded-t-3xl border-t border-bord bg-velours px-5 pb-8 pt-4"
+            className="feuille max-h-[86dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-bord" />
+            <div className="poignee" />
 
             {visuel(ouverte, "h-48 w-full rounded-2xl")}
 
@@ -491,7 +497,7 @@ export default function Kamasutra({
       {/* ------------------------------------------------ Crédits */}
       {credits && (
         <div
-          className="fixed inset-0 z-40 grid place-items-center bg-nuit/90 px-6 backdrop-blur"
+          className="voile voile-centre"
           onClick={() => setCredits(false)}
         >
           <div

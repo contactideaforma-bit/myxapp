@@ -179,7 +179,10 @@ export default function AppShell({
         transition: "height 0.18s ease-out",
       }}
     >
-      <main className={`min-h-0 flex-1 ${plein ? "" : "overflow-y-auto"}`}>
+      <main
+        key={chemin}
+        className={`anim-monte min-h-0 flex-1 ${plein ? "" : "overflow-y-auto"}`}
+      >
         {children}
       </main>
 

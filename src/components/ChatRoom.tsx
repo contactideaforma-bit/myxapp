@@ -55,6 +55,7 @@ export default function ChatRoom({
   const [optionsOuvertes, setOptionsOuvertes] = useState(false);
   const [enregistrement, setEnregistrement] = useState(false);
   const [souvenirs, setSouvenirs] = useState(false);
+  const [avis, setAvis] = useState<string | null>(null);
   const [secondes, setSecondes] = useState(0);
   const recRef = useRef<MediaRecorder | null>(null);
   const morceauxRef = useRef<Blob[]>([]);
@@ -89,7 +90,13 @@ export default function ChatRoom({
   );
 
   /* ------------------------------------------------ Rechargement de secours */
+  const dernierRafraichirRef = useRef(0);
+
   const rafraichir = useCallback(async () => {
+    const now = Date.now();
+    if (now - dernierRafraichirRef.current < 1200) return;
+    dernierRafraichirRef.current = now;
+
     const [{ data }, { data: r }] = await Promise.all([
       supabase
         .from("messages")
@@ -290,6 +297,15 @@ export default function ChatRoom({
   const apercuDe = (m?: Message | null) =>
     !m ? "" : m.kind === "image" ? "📷 Photo" : m.kind === "gif" ? "GIF" : m.body ?? "";
 
+  /** Petite vibration : Android la rend, iOS l'ignore sans erreur. */
+  function vibrer(duree = 8) {
+    try {
+      navigator.vibrate?.(duree);
+    } catch {
+      /* sans conséquence */
+    }
+  }
+
   /* ------------------------------------------------ Actions */
   /** Le champ grandit avec le texte, jusqu'a 6 lignes. */
   function ajusterHauteur() {
@@ -365,6 +381,7 @@ export default function ChatRoom({
     ]);
     setTexte("");
     setRepondA(null);
+    vibrer();
 
     const { data, error } = await supabase
       .from("messages")
@@ -502,7 +519,8 @@ export default function ChatRoom({
       setSecondes(0);
     } catch {
       setActionSur(null);
-      alert("Micro indisponible. Autorisez l'accès dans les réglages du navigateur.");
+      setAvis("Micro indisponible. Autorisez l'accès dans les réglages du navigateur.");
+      setTimeout(() => setAvis(null), 4000);
     }
   }
 
@@ -568,6 +586,7 @@ export default function ChatRoom({
   /** Une réaction par personne : le même emoji retire, un autre remplace. */
   async function reagir(m: Message, emoji: string) {
     setActionSur(null);
+    vibrer(12);
     if (m.enAttente) return;
     const actuelle = reactions.find(
       (r) => r.message_id === m.id && r.user_id === userId
@@ -686,9 +705,10 @@ export default function ChatRoom({
       {/* FIL */}
       <main ref={filRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-6">
         {visibles.length === 0 && (
-          <div className="mx-auto mt-16 max-w-xs text-center">
-            <p className="font-display text-2xl text-orrose">Le silence…</p>
-            <p className="mt-2 text-sm text-brume">
+          <div className="vide anim-monte">
+            <span className="vide-emoji">🕯️</span>
+            <p className="titre-section font-display text-2xl">Le silence…</p>
+            <p className="max-w-[15rem] text-sm leading-relaxed text-brume">
               Brisez-le. Le premier mot vous appartient.
             </p>
           </div>
@@ -703,7 +723,7 @@ export default function ChatRoom({
           return (
             <div
               key={m.id}
-              className={`anim-monte flex w-full flex-col ${
+              className={`anim-monte rangee flex w-full flex-col ${
                 estMoi ? "items-end" : "items-start"
               }`}
             >
@@ -923,16 +943,24 @@ export default function ChatRoom({
         </form>
       </footer>
 
+      {avis && (
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-50 flex justify-center px-4">
+          <p className="anim-monte rounded-xl border border-bordeaux-vif bg-velours px-4 py-2.5 text-sm text-orrose shadow-lg">
+            {avis}
+          </p>
+        </div>
+      )}
+
       {souvenirs && (
         <div
-          className="fixed inset-0 z-40 flex items-end bg-nuit/85 backdrop-blur"
+          className="voile voile-bas"
           onClick={() => setSouvenirs(false)}
         >
           <div
-            className="max-h-[82dvh] w-full overflow-y-auto rounded-t-3xl border-t border-bord bg-velours p-5"
+            className="feuille max-h-[86dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-bord" />
+            <div className="poignee" />
             <h2 className="titre-section font-display text-2xl">Souvenirs</h2>
             <p className="mt-1 text-xs leading-relaxed text-brume">
               Ce que vous avez épinglé. Le reste s&apos;efface après 24 heures.
@@ -940,9 +968,14 @@ export default function ChatRoom({
 
             <div className="mt-4 space-y-2">
               {messages.filter((m) => m.is_saved).length === 0 && (
-                <p className="py-10 text-center text-sm text-brume">
-                  Rien d&apos;épinglé. Touchez un message puis « Conserver ».
-                </p>
+                <div className="vide">
+                  <span className="vide-emoji">📌</span>
+                  <p className="text-sm leading-relaxed text-brume">
+                    Rien d&apos;épinglé.
+                    <br />
+                    Touchez un message puis « Conserver ».
+                  </p>
+                </div>
               )}
               {messages
                 .filter((m) => m.is_saved)
@@ -988,14 +1021,14 @@ export default function ChatRoom({
 
       {optionsOuvertes && (
         <div
-          className="fixed inset-0 z-40 flex items-end bg-nuit/80 backdrop-blur"
+          className="voile voile-bas"
           onClick={() => setOptionsOuvertes(false)}
         >
           <div
-            className="w-full rounded-t-3xl border-t border-bord bg-velours p-5"
+            className="feuille max-h-[86dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-bord" />
+            <div className="poignee" />
 
             <div className="mb-5 grid grid-cols-2 gap-2">
               <button
@@ -1076,14 +1109,14 @@ export default function ChatRoom({
       {/* ---------------------------------------- Actions sur un message */}
       {actionSur && (
         <div
-          className="fixed inset-0 z-40 flex items-end bg-nuit/80 backdrop-blur"
+          className="voile voile-bas"
           onClick={() => setActionSur(null)}
         >
           <div
-            className="w-full rounded-t-3xl border-t border-bord bg-velours p-5"
+            className="feuille max-h-[86dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-bord" />
+            <div className="poignee" />
 
             <div className="mb-4 flex gap-1.5">
               {EMOJIS_REACTION.map((emoji) => {
@@ -1157,7 +1190,7 @@ export default function ChatRoom({
       {/* ---------------------------------------- Vider la conversation */}
       {confirmerVidage && (
         <div
-          className="fixed inset-0 z-40 grid place-items-center bg-nuit/85 px-6 backdrop-blur"
+          className="voile voile-centre"
           onClick={() => setConfirmerVidage(false)}
         >
           <div
