@@ -14,12 +14,14 @@ export default function ProfileForm({
   moi,
   partenaire,
   pinDejaPose,
+  pinJournalDejaPose = false,
 }: {
   coupleId: string;
   couple: Couple;
   moi: Profile;
   partenaire: Profile;
   pinDejaPose: boolean;
+  pinJournalDejaPose?: boolean;
 }) {
   const router = useRouter();
   const [supabase] = useState(() => createClient());
@@ -35,6 +37,8 @@ export default function ProfileForm({
 
   const [pin, setPin] = useState("");
   const [pinPose, setPinPose] = useState(pinDejaPose);
+  const [pinJournal, setPinJournal] = useState("");
+  const [pinJournalPose, setPinJournalPose] = useState(pinJournalDejaPose);
 
   const [message, setMessage] = useState<{ ok: boolean; texte: string } | null>(null);
   const [occupe, setOccupe] = useState(false);
@@ -120,10 +124,33 @@ export default function ProfileForm({
     setOccupe(true);
     const { error } = await supabase.rpc("set_gallery_pin", { p_pin: pin });
     setOccupe(false);
-    if (error) return annoncer(false, error.message);
+    if (error)
+      return annoncer(
+        false,
+        error.message.includes("PIN_SAME_AS_JOURNAL")
+          ? "C'est déjà le code du journal — choisissez-en un autre."
+          : error.message
+      );
     setPin("");
     setPinPose(true);
     annoncer(true, "Code de la galerie enregistré");
+  }
+
+  async function enregistrerPinJournal() {
+    if (!/^[0-9]{4}$/.test(pinJournal)) return annoncer(false, "Le code doit faire 4 chiffres");
+    setOccupe(true);
+    const { error } = await supabase.rpc("set_journal_pin", { p_pin: pinJournal });
+    setOccupe(false);
+    if (error)
+      return annoncer(
+        false,
+        error.message.includes("PIN_SAME_AS_GALLERY")
+          ? "C'est le code de la galerie — le journal en veut un autre."
+          : error.message
+      );
+    setPinJournal("");
+    setPinJournalPose(true);
+    annoncer(true, "Code du journal enregistré");
   }
 
   async function deconnexion() {
@@ -314,6 +341,38 @@ export default function ProfileForm({
 
         <p className="text-xs text-brume">
           {pinPose ? "✓ Un code est actuellement défini." : "Aucun code défini pour l'instant."}
+        </p>
+      </section>
+
+      {/* ---------------------------------------------------- JOURNAL */}
+      <section className="carte space-y-3 p-5" style={{ "--accent": "var(--color-menthe)" } as React.CSSProperties}>
+        <h2 className="font-display text-xl">Code du journal intime</h2>
+        <p className="text-sm leading-relaxed text-brume">
+          Un second code, différent de celui de la galerie. Il ouvre le carnet où
+          vous vous confiez tous les deux — chacun signe ses pages, personne ne
+          réécrit celles de l&apos;autre.
+        </p>
+
+        <div className="flex gap-2">
+          <input
+            className="champ min-w-0 flex-1 text-center font-display text-2xl tracking-[0.5em]"
+            inputMode="numeric"
+            placeholder="••••"
+            maxLength={4}
+            value={pinJournal}
+            onChange={(e) => setPinJournal(e.target.value.replace(/\D/g, ""))}
+          />
+          <button
+            className="btn w-auto shrink-0 px-6"
+            onClick={enregistrerPinJournal}
+            disabled={occupe || pinJournal.length !== 4}
+          >
+            {pinJournalPose ? "Changer" : "Définir"}
+          </button>
+        </div>
+
+        <p className="text-xs text-brume">
+          {pinJournalPose ? "✓ Un code est actuellement défini." : "Aucun code défini pour l'instant."}
         </p>
       </section>
 

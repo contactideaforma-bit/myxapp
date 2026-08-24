@@ -301,3 +301,169 @@ button, [role="button"] {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* =====================================================================
+   JOURNAL INTIME — « PAPIER »
+   La seule rubrique en mode clair : on quitte le velours pour une page
+   de carnet. Tout ce qui est propre au journal est préfixé j- et vit
+   sous .journal, sans toucher au reste de l'app.
+   ===================================================================== */
+.journal {
+  --papier: #F9F4EB;
+  --papier-2: #F2EADD;
+  --papier-3: #E9DFCE;
+  --encre: #2B2230;
+  --encre-2: #6E6176;
+  --encre-3: #A398A8;
+  --ligne: #E4D9C8;
+  --sceau: #8A2246;
+  --sceau-vif: #C43563;
+  --sauge: #2E9E7E;
+  --accent: var(--sceau-vif);
+
+  color-scheme: light;
+  height: 100%;
+  background-color: var(--papier);
+  background-image:
+    radial-gradient(38rem 22rem at 100% 0%, rgba(196, 53, 99, 0.09), transparent 65%),
+    radial-gradient(30rem 20rem at 0% 100%, rgba(46, 158, 126, 0.10), transparent 65%);
+  color: var(--encre);
+}
+.journal ::selection {
+  background: color-mix(in srgb, var(--sceau-vif) 25%, transparent);
+}
+.journal ::-webkit-scrollbar-thumb {
+  background: var(--ligne);
+}
+
+@layer components {
+  .j-champ {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid var(--ligne);
+    border-radius: 0.875rem;
+    padding: 0.8rem 1rem;
+    color: var(--encre);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  }
+  .j-champ::placeholder { color: var(--encre-3); }
+  .j-champ:focus {
+    background: #fff;
+    border-color: var(--sceau-vif);
+    box-shadow: 0 0 0 3px rgba(196, 53, 99, 0.16);
+  }
+
+  /* Zone d'écriture : des lignes de cahier, discrètes */
+  .j-cahier {
+    background:
+      repeating-linear-gradient(
+        transparent 0 calc(1.75rem - 1px),
+        var(--ligne) calc(1.75rem - 1px) 1.75rem
+      );
+    line-height: 1.75rem;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    resize: none;
+    min-height: 8.75rem;
+  }
+  .j-cahier:focus { box-shadow: none; background-color: transparent; }
+
+  .j-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.7rem 1.1rem;
+    border-radius: 0.875rem;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, var(--sceau), var(--sceau-vif));
+    box-shadow: 0 10px 22px -12px rgba(138, 34, 70, 0.7);
+    transition: filter 0.2s, opacity 0.2s;
+  }
+  .j-btn:hover:not(:disabled) { filter: brightness(1.08); }
+  .j-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .j-btn-doux {
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--ligne);
+    color: var(--encre-2);
+    box-shadow: none;
+  }
+
+  /* Une entrée dans la liste */
+  .j-carte {
+    background: rgba(255, 255, 255, 0.62);
+    border: 1px solid var(--ligne);
+    border-radius: 1.125rem;
+    box-shadow: 0 1px 0 #fff inset, 0 10px 28px -22px rgba(43, 34, 48, 0.5);
+    transition: transform 0.15s, box-shadow 0.2s;
+  }
+  .j-carte:active { transform: scale(0.985); }
+
+  .j-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid var(--ligne);
+    background: rgba(255, 255, 255, 0.55);
+    color: var(--encre-2);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .j-chip-on {
+    background: var(--encre);
+    border-color: var(--encre);
+    color: var(--papier);
+  }
+
+  /* Le petit calendrier détaché à gauche d'une entrée */
+  .j-date {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    padding: 0.35rem 0;
+    border-radius: 0.75rem;
+    background: var(--papier-3);
+    color: var(--encre);
+    line-height: 1;
+  }
+
+  .j-etiquette {
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--encre-3);
+  }
+
+  /* Pavé numérique clair */
+  .j-touche {
+    display: grid;
+    place-items: center;
+    height: 3.5rem;
+    border-radius: 1rem;
+    border: 1px solid var(--ligne);
+    background: rgba(255, 255, 255, 0.7);
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    color: var(--encre);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .j-touche:hover:not(:disabled) { border-color: var(--sceau-vif); }
+  .j-touche:disabled { opacity: 0.35; }
+
+  /* Voile clair pour les panneaux du journal */
+  .j-voile {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    background: var(--papier);
+    animation: feuille-monte 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}

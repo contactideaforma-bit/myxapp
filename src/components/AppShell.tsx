@@ -12,6 +12,7 @@ const ONGLETS = [
   { href: "/intime", label: "Intime", icone: "flamme", accent: "var(--color-fuchsia)", halo: "rgba(255,77,141,0.26)" },
   { href: "/jeux", label: "Jeux", icone: "de", accent: "var(--color-ambre)", halo: "rgba(245,166,91,0.22)" },
   { href: "/idees", label: "Idées", icone: "etincelle", accent: "var(--color-cyan)", halo: "rgba(91,214,232,0.20)" },
+  { href: "/journal", label: "Journal", icone: "plume", accent: "var(--color-menthe)", halo: "rgba(61,214,160,0.20)" },
   { href: "/profil", label: "Profil", icone: "profil", accent: "var(--color-orrose)", halo: "rgba(240,188,168,0.18)" },
 ] as const;
 
@@ -62,6 +63,13 @@ function Icone({ nom, actif }: { nom: string; actif: boolean }) {
         <svg {...commun}>
           <path d="M12 3v4M12 17v4M4.5 12h-1.5M21 12h-1.5M6.5 6.5 5.4 5.4M18.6 18.6l-1.1-1.1M6.5 17.5 5.4 18.6M18.6 5.4l-1.1 1.1" />
           <circle cx="12" cy="12" r="3.6" />
+        </svg>
+      );
+    case "plume":
+      return (
+        <svg {...commun}>
+          <path d="M20 4c-6 0-11 3-13 9l-3 7 7-3c6-2 9-7 9-13Z" />
+          <path d="M4 20 13 11" />
         </svg>
       );
     default:
@@ -146,7 +154,7 @@ export default function AppShell({
 
     // Entrer dans une rubrique la marque comme vue.
     const rubrique = chemin.replace("/", "");
-    if (["galerie", "intime", "jeux", "idees"].includes(rubrique)) {
+    if (["galerie", "intime", "jeux", "idees", "journal"].includes(rubrique)) {
       supabase
         .rpc("marquer_vu", { p_rubrique: rubrique })
         .then(() => relever());

@@ -24,10 +24,11 @@ export default async function ProfilPage() {
 
   const partnerId = couple.member_a === user.id ? couple.member_b : couple.member_a;
 
-  const [{ data: moi }, { data: partenaire }, { data: pinPose }] = await Promise.all([
+  const [{ data: moi }, { data: partenaire }, { data: pinPose }, { data: pinJournalPose }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<Profile>(),
     supabase.from("profiles").select("*").eq("id", partnerId).maybeSingle<Profile>(),
     supabase.rpc("has_gallery_pin"),
+    supabase.rpc("has_journal_pin"),
   ]);
 
   return (
@@ -38,6 +39,7 @@ export default async function ProfilPage() {
         moi={moi ?? { id: user.id, display_name: "Moi", emoji: "🔥" }}
         partenaire={partenaire ?? { id: partnerId, display_name: "Mon amour", emoji: "🔥" }}
         pinDejaPose={pinPose === true}
+        pinJournalDejaPose={pinJournalPose === true}
       />
     </AppShell>
   );
