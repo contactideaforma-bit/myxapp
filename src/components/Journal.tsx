@@ -77,6 +77,22 @@ const fmtJour = new Intl.DateTimeFormat("fr-FR", { weekday: "short" });
 const fmtMois = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" });
 const fmtLong = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 const dateLocale = (iso: string) => new Date(iso + "T12:00:00");
+const fmtHeure = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
+const fmtCourt = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" });
+
+/** « à l'instant », « il y a 12 min », « hier à 21:14 », « 3 août à 09:02 » */
+function depuis(iso: string | null | undefined, maintenant = Date.now()): string {
+  if (!iso) return "jamais";
+  const d = new Date(iso);
+  const s = Math.max(0, (maintenant - d.getTime()) / 1000);
+  if (s < 60) return "à l'instant";
+  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
+  if (s < 6 * 3600) return `il y a ${Math.floor(s / 3600)} h`;
+  const j = new Date(maintenant); j.setHours(0, 0, 0, 0);
+  if (d.getTime() >= j.getTime()) return `aujourd'hui à ${fmtHeure.format(d)}`;
+  if (d.getTime() >= j.getTime() - 86400000) return `hier à ${fmtHeure.format(d)}`;
+  return `le ${fmtCourt.format(d)} à ${fmtHeure.format(d)}`;
+}
 const cleMois = (iso: string) => iso.slice(0, 7);
 const majuscule = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -103,6 +119,10 @@ export default function Journal({
 
   /* ------------------------------------------------ Contenu */
   const [entrees, setEntrees] = useState<Entree[]>([]);
+  /** entry_id → date de lecture par l'AUTRE (pour mes pages) ou par moi (pour les siennes). */
+  const [lectures, setLectures] = useState<Record<string, string>>({});
+  const [partenaireActif, setPartenaireActif] = useState<string | null>(null);
+  const [tic, setTic] = useState(Date.now());
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [chargement, setChargement] = useState(false);
 
@@ -168,8 +188,60 @@ export default function Journal({
     const liste = (data ?? []) as Entree[];
     setEntrees(liste);
     signer(liste.map((e) => e.photo_path).filter(Boolean) as string[]);
+
+    // Qui a lu quoi : une ligne par (page, lecteur). Ce qui m'intéresse,
+    // c'est la lecture de l'autre sur mes pages, et la mienne sur les siennes.
+    const { data: lus } = await supabase.from("journal_reads").select("entry_id, user_id, vu_le");
+    const carte: Record<string, string> = {};
+    (lus ?? []).forEach((r: { entry_id: string; user_id: string; vu_le: string }) => {
+      carte[`${r.entry_id}:${r.user_id}`] = r.vu_le;
+    });
+    setLectures(carte);
     setChargement(false);
   }, [supabase, coupleId, signer]);
+
+  /* Dernière connexion du/de la partenaire : le battement de cœur de
+     l'app (ping_presence) tient profiles.last_active_at à jour. */
+  const releverPresence = useCallback(async () => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("last_active_at")
+      .eq("id", partenaire.id)
+      .maybeSingle();
+    setPartenaireActif((data as { last_active_at: string | null } | null)?.last_active_at ?? null);
+    // Et les « vu » de l'autre, pour qu'ils apparaissent sans recharger.
+    const { data: lus } = await supabase.from("journal_reads").select("entry_id, user_id, vu_le");
+    if (lus) {
+      const carte: Record<string, string> = {};
+      lus.forEach((r: { entry_id: string; user_id: string; vu_le: string }) => {
+        carte[`${r.entry_id}:${r.user_id}`] = r.vu_le;
+      });
+      setLectures(carte);
+    }
+    setTic(Date.now());
+  }, [supabase, partenaire.id]);
+
+  useEffect(() => {
+    if (!ouvert) return;
+    releverPresence();
+    const t = setInterval(releverPresence, 30_000);
+    return () => clearInterval(t);
+  }, [ouvert, releverPresence]);
+
+  /** Marquer « vu » quand j'ouvre une page de l'autre. */
+  const marquerLu = useCallback(
+    async (e: Entree) => {
+      if (e.auteur === userId) return;
+      const cle = `${e.id}:${userId}`;
+      if (!lectures[cle]) setLectures((p) => ({ ...p, [cle]: new Date().toISOString() }));
+      await supabase.rpc("journal_marquer_lu", { p_entry: e.id });
+    },
+    [supabase, userId, lectures]
+  );
+
+  const vuParAutre = (e: Entree) => lectures[`${e.id}:${partenaire.id}`] ?? null;
+  const luParMoi = (e: Entree) => !!lectures[`${e.id}:${userId}`];
+  const enLigne = !!partenaireActif && Date.now() - new Date(partenaireActif).getTime() < 60_000;
 
   const fermerTout = useCallback(() => {
     setEntrees([]);
@@ -485,8 +557,14 @@ export default function Journal({
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
             <h1 className="font-display text-2xl leading-tight">Journal intime</h1>
-            <p className="text-xs" style={{ color: "var(--encre-3)" }}>
-              {entrees.length} page{entrees.length > 1 ? "s" : ""} · session de 15 min
+            <p className="flex items-center gap-1.5 text-xs" style={{ color: "var(--encre-3)" }}>
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-full"
+                style={{ background: enLigne ? "var(--sauge)" : "var(--encre-3)", boxShadow: enLigne ? "0 0 0 3px rgba(46,158,126,0.2)" : "none" }}
+              />
+              <span className="truncate">
+                {partenaire.nom} · {enLigne ? "en ligne" : `vu·e ${depuis(partenaireActif, tic)}`}
+              </span>
             </p>
           </div>
           <button
@@ -584,7 +662,7 @@ export default function Journal({
                 const meteo = METEO.find((m) => m.n === e.meteo);
                 const extrait = (e.contenu || e.heureux || e.triste || "").replace(/\s+/g, " ").slice(0, 140);
                 return (
-                  <article key={e.id} className="j-carte rangee flex cursor-pointer gap-3 p-3" onClick={() => setLecture(e)}>
+                  <article key={e.id} className="j-carte rangee flex cursor-pointer gap-3 p-3" onClick={() => { setLecture(e); marquerLu(e); }}>
                     <div className="j-date shrink-0">
                       <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--encre-3)" }}>
                         {fmtJour.format(d).replace(".", "")}
@@ -608,6 +686,17 @@ export default function Journal({
                       )}
                       <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                         <Signature auteur={e.auteur} />
+                        {e.auteur === userId ? (
+                          vuParAutre(e) ? (
+                            <span className="text-[10px]" style={{ color: "var(--sauge)" }} title={`Vu ${depuis(vuParAutre(e), tic)}`}>✓✓ vu</span>
+                          ) : (
+                            <span className="text-[10px]" style={{ color: "var(--encre-3)" }}>✓ pas encore lu</span>
+                          )
+                        ) : (
+                          !luParMoi(e) && (
+                            <span className="rounded-full px-1.5 text-[10px] font-semibold" style={{ background: "var(--sceau-vif)", color: "#fff" }}>nouveau</span>
+                          )
+                        )}
                         {e.favori && <span className="text-xs" style={{ color: "var(--sceau-vif)" }}>★</span>}
                         {e.photo_path && <span className="text-xs" style={{ color: "var(--encre-3)" }}>📷</span>}
                         {(e.tags ?? []).slice(0, 3).map((t) => (
@@ -649,7 +738,16 @@ export default function Journal({
               <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
                   <h1 className="font-display text-3xl leading-tight">{lecture.titre || "Sans titre"}</h1>
-                  <div className="mt-2"><Signature auteur={lecture.auteur} /></div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <Signature auteur={lecture.auteur} />
+                    {lecture.auteur === userId && (
+                      <span className="text-[11px]" style={{ color: vuParAutre(lecture) ? "var(--sauge)" : "var(--encre-3)" }}>
+                        {vuParAutre(lecture)
+                          ? `✓✓ Vu par ${partenaire.nom} ${depuis(vuParAutre(lecture), tic)}`
+                          : `✓ ${partenaire.nom} n'a pas encore lu cette page`}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1 text-right">
                   {lecture.humeur && <span className="text-3xl leading-none">{lecture.humeur}</span>}

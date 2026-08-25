@@ -6,15 +6,21 @@ import { usePathname } from "next/navigation";
 import { useClavier } from "@/lib/useClavier";
 import { createClient } from "@/lib/supabase/client";
 
+/* Les onglets marqués `masque` restent codés et joignables par leur URL,
+   mais n'apparaissent pas dans la barre — en attendant d'être vraiment
+   développés. Pour les rendre visibles : retirer `masque: true`. */
 const ONGLETS = [
   { href: "/chat", label: "Nous", icone: "bulle", accent: "var(--color-bordeaux-vif)", halo: "rgba(196,53,99,0.28)" },
   { href: "/galerie", label: "Galerie", icone: "image", accent: "var(--color-amethyste)", halo: "rgba(168,107,216,0.26)" },
   { href: "/intime", label: "Intime", icone: "flamme", accent: "var(--color-fuchsia)", halo: "rgba(255,77,141,0.26)" },
-  { href: "/jeux", label: "Jeux", icone: "de", accent: "var(--color-ambre)", halo: "rgba(245,166,91,0.22)" },
-  { href: "/idees", label: "Idées", icone: "etincelle", accent: "var(--color-cyan)", halo: "rgba(91,214,232,0.20)" },
+  { href: "/jeux", label: "Jeux", icone: "de", accent: "var(--color-ambre)", halo: "rgba(245,166,91,0.22)", masque: true },
+  { href: "/idees", label: "Idées", icone: "etincelle", accent: "var(--color-cyan)", halo: "rgba(91,214,232,0.20)", masque: true },
   { href: "/journal", label: "Journal", icone: "plume", accent: "var(--color-menthe)", halo: "rgba(61,214,160,0.20)" },
   { href: "/profil", label: "Profil", icone: "profil", accent: "var(--color-orrose)", halo: "rgba(240,188,168,0.18)" },
 ] as const;
+
+type Onglet = (typeof ONGLETS)[number];
+const VISIBLES = ONGLETS.filter((o) => !("masque" in o && o.masque)) as readonly Onglet[];
 
 function Icone({ nom, actif }: { nom: string; actif: boolean }) {
   const commun = {
@@ -197,7 +203,7 @@ export default function AppShell({
       {!clavierOuvert && (
       <nav className="shrink-0 border-t border-bord bg-velours/95 backdrop-blur">
         <ul className="mx-auto flex max-w-md">
-          {ONGLETS.map((o) => {
+          {VISIBLES.map((o) => {
             const actif = chemin === o.href;
             return (
               <li key={o.href} className="flex-1">
