@@ -370,6 +370,39 @@ button, [role="button"] {
   }
   .j-cahier:focus { box-shadow: none; background-color: transparent; }
 
+  /* Zone de texte auto-grandissante SANS saut de page : le ::after
+     réplique le texte saisi (data-valeur) et donne sa hauteur à la
+     grille, le textarea la remplit. Aucune hauteur recalculée en JS,
+     donc plus de tremblement pendant la frappe. */
+  .j-pousse {
+    display: grid;
+  }
+  .j-pousse::after {
+    content: attr(data-valeur) " ";
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    visibility: hidden;
+  }
+  .j-pousse::after,
+  .j-pousse > textarea {
+    grid-area: 1 / 1 / 2 / 2;
+    font: inherit;
+    line-height: inherit;
+    min-width: 0;
+    padding: 0;
+    border: none;
+  }
+  .j-pousse > textarea {
+    background: transparent;
+    color: inherit;
+    outline: none;
+    resize: none;
+    overflow: hidden;
+  }
+  .j-pousse > textarea::placeholder {
+    color: var(--encre-3);
+  }
+
   .j-btn {
     display: inline-flex;
     align-items: center;
@@ -465,5 +498,7 @@ button, [role="button"] {
     flex-direction: column;
     background: var(--papier);
     animation: feuille-monte 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+    /* Le défilement interne ne doit jamais entraîner la page derrière. */
+    overscroll-behavior: contain;
   }
 }

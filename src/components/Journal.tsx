@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { compresserImage } from "@/lib/compression";
@@ -43,6 +43,11 @@ type Brouillon = {
 };
 
 const DUREE_SESSION_MS = 15 * 60 * 1000;
+/** En écrivant, on repousse la session serveur au plus toutes les 4 min. */
+const INTERVALLE_PROLONGATION_MS = 4 * 60 * 1000;
+
+const estRempli = (b: Brouillon | null | undefined): boolean =>
+  !!b && !!(b.contenu.trim() || b.titre.trim() || b.heureux.trim() || b.triste.trim() || b.photo_path);
 
 const HUMEURS = ["😌", "🥰", "🔥", "😊", "🤍", "😔", "😢", "😤", "😴", "🤯"];
 
@@ -96,6 +101,38 @@ function depuis(iso: string | null | undefined, maintenant = Date.now()): string
 const cleMois = (iso: string) => iso.slice(0, 7);
 const majuscule = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/* =====================================================================
+   Zone de texte qui grandit sans faire sauter la page.
+   Le ::after de .j-pousse réplique le texte et donne sa hauteur à la
+   grille ; le textarea la remplit. Plus aucune hauteur recalculée en JS
+   (l'ancien height = "auto" → scrollHeight faisait bondir la page à
+   chaque frappe).
+   ===================================================================== */
+function AutoTexte({
+  valeur,
+  onValeur,
+  className = "",
+  style,
+  placeholder,
+}: {
+  valeur: string;
+  onValeur: (v: string) => void;
+  className?: string;
+  style?: React.CSSProperties;
+  placeholder?: string;
+}) {
+  return (
+    <div className={`j-pousse ${className}`} data-valeur={valeur} style={style}>
+      <textarea
+        rows={1}
+        value={valeur}
+        placeholder={placeholder}
+        onChange={(e) => onValeur(e.target.value)}
+      />
+    </div>
+  );
+}
+
 export default function Journal({
   coupleId,
   userId,
@@ -133,10 +170,10 @@ export default function Journal({
   const [filtreTag, setFiltreTag] = useState<string | null>(null);
   const [filtreMois, setFiltreMois] = useState<string | null>(null);
   const [lecture, setLecture] = useState<Entree | null>(null);
-  const [brouillon, setBrouillon] = useState<Brouillon | null>(null);
-  const [tagSaisie, setTagSaisie] = useState("");
-  const [confirmeSuppr, setConfirmeSuppr] = useState(false);
-  const fichierRef = useRef<HTMLInputElement>(null);
+  /** Page en cours d'écriture (valeur initiale de l'éditeur). */
+  const [edition, setEdition] = useState<Brouillon | null>(null);
+  /** Le brouillon survit aux rechargements et au reverrouillage. */
+  const cleStockage = `journal-brouillon:${coupleId}:${userId}`;
 
   const Signature = ({ auteur, clair = true }: { auteur: string; clair?: boolean }) => {
     const deMoi = auteur === userId;
@@ -247,7 +284,9 @@ export default function Journal({
     setEntrees([]);
     setUrls({});
     setLecture(null);
-    setBrouillon(null);
+    // On ferme l'éditeur mais le brouillon reste en stockage local :
+    // il sera rouvert au prochain déverrouillage.
+    setEdition(null);
   }, []);
 
   const verifierSession = useCallback(async () => {
@@ -284,6 +323,37 @@ export default function Journal({
     if (minuterieRef.current) clearTimeout(minuterieRef.current);
   }, []);
 
+  /* Tant que l'on écrit, la session ne doit pas expirer sous les doigts :
+     chaque frappe réarme la minuterie locale, et on repousse la session
+     serveur au plus toutes les 4 minutes (⚠ rpc sans .then ne part jamais). */
+  const derniereProlongationRef = useRef(0);
+  const signalerActivite = useCallback(() => {
+    armerMinuterie();
+    const t = Date.now();
+    if (t - derniereProlongationRef.current > INTERVALLE_PROLONGATION_MS) {
+      derniereProlongationRef.current = t;
+      supabase.rpc("journal_prolonger").then(
+        () => {},
+        () => {}
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
+
+  /* Un brouillon conservé (rechargement, session expirée…) est rouvert
+     dès que le journal est déverrouillé. */
+  useEffect(() => {
+    if (!ouvert) return;
+    try {
+      const brut = localStorage.getItem(cleStockage);
+      if (!brut) return;
+      const b = { ...brouillonVide(), ...(JSON.parse(brut) as Partial<Brouillon>) };
+      if (estRempli(b)) setEdition((deja) => deja ?? b);
+    } catch {
+      /* stockage indisponible : tant pis */
+    }
+  }, [ouvert, cleStockage]);
+
   /* ================================================ Déverrouillage */
   const tenter = useCallback(
     async (code: string) => {
@@ -305,6 +375,7 @@ export default function Journal({
       if (r.ok) {
         setBloqueJusqua(null);
         setOuvert(true);
+        derniereProlongationRef.current = Date.now();
         armerMinuterie();
         charger();
       } else if (r.bloque_jusqua) {
@@ -332,14 +403,12 @@ export default function Journal({
   /* ================================================ Écriture */
   function nouvelleEntree() {
     setLecture(null);
-    setBrouillon(brouillonVide());
-    setTagSaisie("");
-    setConfirmeSuppr(false);
+    setEdition(brouillonVide());
   }
 
   function modifier(e: Entree) {
     setLecture(null);
-    setBrouillon({
+    setEdition({
       id: e.id,
       jour: e.jour,
       titre: e.titre ?? "",
@@ -352,82 +421,64 @@ export default function Journal({
       favori: e.favori,
       photo_path: e.photo_path,
     });
-    setTagSaisie("");
-    setConfirmeSuppr(false);
   }
 
-  const brouillonRempli =
-    !!brouillon &&
-    (brouillon.contenu.trim() || brouillon.titre.trim() || brouillon.heureux.trim() || brouillon.triste.trim() || brouillon.photo_path);
-
-  function ajouterTag(brut: string) {
-    const t = brut.trim().replace(/^#/, "").toLowerCase();
-    if (!t || !brouillon) return;
-    if (!brouillon.tags.includes(t)) setBrouillon({ ...brouillon, tags: [...brouillon.tags, t] });
-    setTagSaisie("");
-  }
-
-  async function joindrePhoto(brut: File) {
-    if (!brouillon || !brut.type.startsWith("image/")) return;
-    setOccupe(true);
-    const fichier = await compresserImage(brut, 1600, 0.8);
-    const ext = fichier.name.split(".").pop()?.toLowerCase() || "jpg";
-    const chemin = `${coupleId}/journal/${userId}-${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("intimate").upload(chemin, fichier, { upsert: false });
-    if (error) setErreur(error.message);
-    else {
-      const ancien = brouillon.photo_path;
-      if (ancien) supabase.storage.from("intimate").remove([ancien]);
-      setBrouillon((b) => (b ? { ...b, photo_path: chemin } : b));
-      signer([chemin]);
+  const viderBrouillonStocke = useCallback(() => {
+    try {
+      localStorage.removeItem(cleStockage);
+    } catch {
+      /* rien */
     }
-    setOccupe(false);
-    armerMinuterie();
-  }
+  }, [cleStockage]);
 
-  async function retirerPhoto() {
-    if (!brouillon?.photo_path) return;
-    await supabase.storage.from("intimate").remove([brouillon.photo_path]);
-    setBrouillon((b) => (b ? { ...b, photo_path: null } : b));
-  }
+  const fermerEditeur = useCallback(() => {
+    viderBrouillonStocke();
+    setEdition(null);
+  }, [viderBrouillonStocke]);
 
-  async function enregistrer() {
-    if (!brouillon || !brouillonRempli) return;
-    setOccupe(true);
-    if (tagSaisie.trim()) ajouterTag(tagSaisie);
-    const ligne = {
-      couple_id: coupleId,
-      auteur: userId,
-      jour: brouillon.jour,
-      titre: brouillon.titre.trim() || null,
-      contenu: brouillon.contenu.trim(),
-      heureux: brouillon.heureux.trim() || null,
-      triste: brouillon.triste.trim() || null,
-      humeur: brouillon.humeur,
-      meteo: brouillon.meteo,
-      tags: brouillon.tags,
-      favori: brouillon.favori,
-      photo_path: brouillon.photo_path,
-    };
-    const { error } = brouillon.id
-      ? await supabase.from("journal_entries").update(ligne).eq("id", brouillon.id)
-      : await supabase.from("journal_entries").insert(ligne);
-    setOccupe(false);
-    if (error) return setErreur(error.message);
-    setBrouillon(null);
-    await charger();
-    armerMinuterie();
-  }
+  /** Écrit la page en base. Retourne un message d'erreur, ou null si tout va bien. */
+  const enregistrerEntree = useCallback(
+    async (b: Brouillon): Promise<string | null> => {
+      const ligne = {
+        couple_id: coupleId,
+        auteur: userId,
+        jour: b.jour,
+        titre: b.titre.trim() || null,
+        contenu: b.contenu.trim(),
+        heureux: b.heureux.trim() || null,
+        triste: b.triste.trim() || null,
+        humeur: b.humeur,
+        meteo: b.meteo,
+        tags: b.tags,
+        favori: b.favori,
+        photo_path: b.photo_path,
+      };
+      const { error } = b.id
+        ? await supabase.from("journal_entries").update(ligne).eq("id", b.id)
+        : await supabase.from("journal_entries").insert(ligne);
+      if (error) return error.message;
+      viderBrouillonStocke();
+      setEdition(null);
+      armerMinuterie();
+      await charger();
+      return null;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [supabase, coupleId, userId, charger, viderBrouillonStocke]
+  );
 
-  async function supprimer(e: Entree) {
-    setOccupe(true);
-    if (e.photo_path) await supabase.storage.from("intimate").remove([e.photo_path]);
-    await supabase.from("journal_entries").delete().eq("id", e.id);
-    setEntrees((p) => p.filter((x) => x.id !== e.id));
-    setLecture(null);
-    setBrouillon(null);
-    setOccupe(false);
-  }
+  const supprimerEntree = useCallback(
+    async (id: string) => {
+      const e = entrees.find((x) => x.id === id);
+      if (e?.photo_path) await supabase.storage.from("intimate").remove([e.photo_path]);
+      await supabase.from("journal_entries").delete().eq("id", id);
+      setEntrees((p) => p.filter((x) => x.id !== id));
+      setLecture(null);
+      viderBrouillonStocke();
+      setEdition(null);
+    },
+    [entrees, supabase, viderBrouillonStocke]
+  );
 
   async function basculerFavori(e: Entree) {
     const v = !e.favori;
@@ -626,7 +677,7 @@ export default function Journal({
       </header>
 
       {/* ---------------------------------------------- Pages */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6">
         {chargement && entrees.length === 0 && (
           <div className="vide">
             <span className="vide-emoji" style={{ animation: "pulse-doux 1.4s infinite" }}>📖</span>
@@ -733,7 +784,7 @@ export default function Journal({
             )}
           </header>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-10 pt-5">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-10 pt-5">
             <div className="mx-auto max-w-md">
               <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
@@ -798,231 +849,372 @@ export default function Journal({
       )}
 
       {/* ---------------------------------------------- Éditeur */}
-      {brouillon && (
-        <div className="j-voile journal">
-          <header className="flex shrink-0 items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--ligne)" }}>
-            <button
-              onClick={() => { setBrouillon(null); setConfirmeSuppr(false); }}
-              className="j-btn j-btn-doux h-10 !px-3 text-sm"
-            >
-              Annuler
-            </button>
-            <div className="flex-1" />
-            <button
-              onClick={() => setBrouillon({ ...brouillon, favori: !brouillon.favori })}
-              className="j-btn j-btn-doux h-10 w-10 !p-0"
-              aria-label="Favori"
-            >
-              <span style={{ color: brouillon.favori ? "var(--sceau-vif)" : "var(--encre-3)" }}>{brouillon.favori ? "★" : "☆"}</span>
-            </button>
-            <button onClick={enregistrer} disabled={occupe || !brouillonRempli} className="j-btn h-10 !px-4 text-sm">
-              {occupe ? "…" : "Enregistrer"}
-            </button>
-          </header>
-
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-16 pt-4">
-            <div className="mx-auto max-w-md space-y-6">
-              {/* Date */}
-              <div className="flex items-center gap-3">
-                <input
-                  type="date"
-                  className="j-champ w-auto text-sm"
-                  value={brouillon.jour}
-                  max={aujourdhui()}
-                  onChange={(e) => setBrouillon({ ...brouillon, jour: e.target.value || aujourdhui() })}
-                />
-                <span className="text-xs" style={{ color: "var(--encre-3)" }}>
-                  {majuscule(fmtLong.format(dateLocale(brouillon.jour)))}
-                </span>
-              </div>
-
-              {/* Humeur */}
-              <div>
-                <p className="j-etiquette mb-2">Humeur du moment</p>
-                <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1" style={{ scrollbarWidth: "none" }}>
-                  {HUMEURS.map((h) => (
-                    <button
-                      key={h}
-                      onClick={() => setBrouillon({ ...brouillon, humeur: brouillon.humeur === h ? null : h })}
-                      className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-2xl transition"
-                      style={{
-                        background: brouillon.humeur === h ? "#fff" : "transparent",
-                        border: `1px solid ${brouillon.humeur === h ? "var(--sceau-vif)" : "var(--ligne)"}`,
-                        boxShadow: brouillon.humeur === h ? "0 0 0 3px rgba(196,53,99,0.16)" : "none",
-                      }}
-                    >
-                      {h}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Météo intérieure */}
-              <div>
-                <p className="j-etiquette mb-2">Météo intérieure</p>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {METEO.map((m) => {
-                    const on = brouillon.meteo === m.n;
-                    return (
-                      <button
-                        key={m.n}
-                        onClick={() => setBrouillon({ ...brouillon, meteo: on ? null : m.n })}
-                        className="flex flex-col items-center gap-1 rounded-xl py-2 transition"
-                        style={{
-                          background: on ? "var(--encre)" : "rgba(255,255,255,0.55)",
-                          color: on ? "var(--papier)" : "var(--encre-2)",
-                          border: `1px solid ${on ? "var(--encre)" : "var(--ligne)"}`,
-                        }}
-                      >
-                        <span className="text-xl leading-none">{m.icone}</span>
-                        <span className="text-[10px]">{m.nom}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Titre + texte */}
-              <div>
-                <input
-                  className="w-full bg-transparent font-display text-2xl outline-none"
-                  style={{ color: "var(--encre)" }}
-                  placeholder="Un titre, si le cœur vous en dit"
-                  value={brouillon.titre}
-                  onChange={(e) => setBrouillon({ ...brouillon, titre: e.target.value })}
-                />
-                <textarea
-                  className="j-champ j-cahier mt-3 w-full text-[15px]"
-                  placeholder="Cher journal…"
-                  rows={6}
-                  value={brouillon.contenu}
-                  onChange={(e) => {
-                    setBrouillon({ ...brouillon, contenu: e.target.value });
-                    e.target.style.height = "auto";
-                    e.target.style.height = e.target.scrollHeight + "px";
-                  }}
-                />
-              </div>
-
-              {/* Heureux / triste */}
-              <div className="grid gap-3">
-                <label className="block rounded-2xl p-3" style={{ background: "rgba(46,158,126,0.10)", border: "1px solid rgba(46,158,126,0.25)" }}>
-                  <span className="j-etiquette" style={{ color: "var(--sauge)" }}>☀️ Ce qui m&apos;a rendu·e heureux·se</span>
-                  <textarea
-                    className="mt-1.5 w-full resize-none bg-transparent text-sm leading-6 outline-none"
-                    placeholder="Un geste, une phrase, un moment…"
-                    rows={2}
-                    value={brouillon.heureux}
-                    onChange={(e) => setBrouillon({ ...brouillon, heureux: e.target.value })}
-                  />
-                </label>
-                <label className="block rounded-2xl p-3" style={{ background: "rgba(138,34,70,0.07)", border: "1px solid rgba(138,34,70,0.2)" }}>
-                  <span className="j-etiquette" style={{ color: "var(--sceau)" }}>🌧️ Ce qui m&apos;a rendu·e triste</span>
-                  <textarea
-                    className="mt-1.5 w-full resize-none bg-transparent text-sm leading-6 outline-none"
-                    placeholder="Ce qui pèse, ce qui manque…"
-                    rows={2}
-                    value={brouillon.triste}
-                    onChange={(e) => setBrouillon({ ...brouillon, triste: e.target.value })}
-                  />
-                </label>
-              </div>
-
-              {/* Tags */}
-              <div>
-                <p className="j-etiquette mb-2">Étiquettes</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {brouillon.tags.map((t) => (
-                    <button key={t} className="j-chip" onClick={() => setBrouillon({ ...brouillon, tags: brouillon.tags.filter((x) => x !== t) })}>
-                      #{t} <span style={{ color: "var(--encre-3)" }}>×</span>
-                    </button>
-                  ))}
-                  <input
-                    className="j-chip min-w-[8rem] flex-1 outline-none"
-                    placeholder="#désir, #nous, #doute…"
-                    value={tagSaisie}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v.endsWith(",") || v.endsWith(" ")) ajouterTag(v.slice(0, -1));
-                      else setTagSaisie(v);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") { e.preventDefault(); ajouterTag(tagSaisie); }
-                      if (e.key === "Backspace" && !tagSaisie && brouillon.tags.length)
-                        setBrouillon({ ...brouillon, tags: brouillon.tags.slice(0, -1) });
-                    }}
-                    onBlur={() => tagSaisie && ajouterTag(tagSaisie)}
-                  />
-                </div>
-              </div>
-
-              {/* Photo */}
-              <div>
-                <p className="j-etiquette mb-2">Photo</p>
-                {brouillon.photo_path ? (
-                  <div className="relative">
-                    {urls[brouillon.photo_path] ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={urls[brouillon.photo_path]} alt="" className="w-full rounded-2xl object-cover" style={{ maxHeight: "18rem", border: "1px solid var(--ligne)" }} />
-                    ) : (
-                      <div className="h-32 rounded-2xl" style={{ background: "var(--papier-3)" }} />
-                    )}
-                    <button onClick={retirerPhoto} className="j-btn j-btn-doux absolute right-2 top-2 h-9 !px-3 text-xs">Retirer</button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => fichierRef.current?.click()}
-                    disabled={occupe}
-                    className="j-btn j-btn-doux w-full py-4"
-                    style={{ borderStyle: "dashed" }}
-                  >
-                    📷 Joindre une image
-                  </button>
-                )}
-                <input
-                  ref={fichierRef}
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) joindrePhoto(f);
-                    e.target.value = "";
-                  }}
-                />
-              </div>
-
-              {erreur && <p className="text-sm" style={{ color: "var(--sceau)" }}>{erreur}</p>}
-
-              {/* Suppression */}
-              {brouillon.id && (
-                <div className="pt-2 text-center">
-                  {confirmeSuppr ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="text-sm" style={{ color: "var(--encre-2)" }}>Déchirer cette page ?</span>
-                      <button
-                        className="j-btn h-9 !px-3 text-xs"
-                        disabled={occupe}
-                        onClick={() => {
-                          const e = entrees.find((x) => x.id === brouillon.id);
-                          if (e) supprimer(e);
-                        }}
-                      >
-                        Oui, supprimer
-                      </button>
-                      <button className="j-btn j-btn-doux h-9 !px-3 text-xs" onClick={() => setConfirmeSuppr(false)}>Non</button>
-                    </div>
-                  ) : (
-                    <button className="text-xs underline-offset-2 hover:underline" style={{ color: "var(--encre-3)" }} onClick={() => setConfirmeSuppr(true)}>
-                      Supprimer cette page
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+      {edition && (
+        <Editeur
+          key={edition.id ?? "nouvelle-page"}
+          initial={edition}
+          coupleId={coupleId}
+          userId={userId}
+          supabase={supabase}
+          urls={urls}
+          signer={signer}
+          cleStockage={cleStockage}
+          onActivite={signalerActivite}
+          onFermer={fermerEditeur}
+          onEnregistrer={enregistrerEntree}
+          onSupprimer={supprimerEntree}
+        />
       )}
     </div>
   );
 }
+
+/* =====================================================================
+   ÉDITEUR — composant séparé et mémoïsé : taper une lettre ne re-rend
+   plus tout le journal (liste, filtres, en-tête), seulement cette page.
+   Le brouillon est auto-sauvegardé en stockage local à chaque pause de
+   frappe, puis restauré si la page se recharge ou si la session expire.
+   ===================================================================== */
+const Editeur = memo(function Editeur({
+  initial,
+  coupleId,
+  userId,
+  supabase,
+  urls,
+  signer,
+  cleStockage,
+  onActivite,
+  onFermer,
+  onEnregistrer,
+  onSupprimer,
+}: {
+  initial: Brouillon;
+  coupleId: string;
+  userId: string;
+  supabase: ReturnType<typeof createClient>;
+  urls: Record<string, string>;
+  signer: (chemins: string[]) => void;
+  cleStockage: string;
+  onActivite: () => void;
+  onFermer: () => void;
+  onEnregistrer: (b: Brouillon) => Promise<string | null>;
+  onSupprimer: (id: string) => Promise<void>;
+}) {
+  const [brouillon, setBrouillon] = useState<Brouillon>(initial);
+  const [tagSaisie, setTagSaisie] = useState("");
+  const [confirmeSuppr, setConfirmeSuppr] = useState(false);
+  const [confirmeAbandon, setConfirmeAbandon] = useState(false);
+  const [occupe, setOccupe] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const fichierRef = useRef<HTMLInputElement>(null);
+  const sauvegardeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const rempli = estRempli(brouillon);
+
+  /** Toute modification passe par ici : état local + signal d'activité. */
+  const poser = (maj: Partial<Brouillon>) => {
+    setBrouillon((b) => ({ ...b, ...maj }));
+    onActivite();
+  };
+
+  /* Auto-sauvegarde du brouillon, 400 ms après la dernière frappe. */
+  useEffect(() => {
+    if (sauvegardeRef.current) clearTimeout(sauvegardeRef.current);
+    sauvegardeRef.current = setTimeout(() => {
+      try {
+        if (estRempli(brouillon)) localStorage.setItem(cleStockage, JSON.stringify(brouillon));
+        else localStorage.removeItem(cleStockage);
+      } catch {
+        /* stockage indisponible : tant pis */
+      }
+    }, 400);
+    return () => {
+      if (sauvegardeRef.current) clearTimeout(sauvegardeRef.current);
+    };
+  }, [brouillon, cleStockage]);
+
+  const normaliserTag = (brut: string) => brut.trim().replace(/^#/, "").toLowerCase();
+
+  function ajouterTag(brut: string) {
+    const t = normaliserTag(brut);
+    setTagSaisie("");
+    if (!t) return;
+    setBrouillon((b) => (b.tags.includes(t) ? b : { ...b, tags: [...b.tags, t] }));
+    onActivite();
+  }
+
+  async function joindrePhoto(brut: File) {
+    if (!brut.type.startsWith("image/")) return;
+    setOccupe(true);
+    const fichier = await compresserImage(brut, 1600, 0.8);
+    const ext = fichier.name.split(".").pop()?.toLowerCase() || "jpg";
+    const chemin = `${coupleId}/journal/${userId}-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("intimate").upload(chemin, fichier, { upsert: false });
+    if (error) setErreur(error.message);
+    else {
+      const ancien = brouillon.photo_path;
+      if (ancien) supabase.storage.from("intimate").remove([ancien]);
+      poser({ photo_path: chemin });
+      signer([chemin]);
+    }
+    setOccupe(false);
+  }
+
+  async function retirerPhoto() {
+    if (!brouillon.photo_path) return;
+    await supabase.storage.from("intimate").remove([brouillon.photo_path]);
+    poser({ photo_path: null });
+  }
+
+  async function enregistrer() {
+    if (!rempli || occupe) return;
+    setOccupe(true);
+    setErreur(null);
+    let b = brouillon;
+    const t = normaliserTag(tagSaisie);
+    if (t && !b.tags.includes(t)) b = { ...b, tags: [...b.tags, t] };
+    const message = await onEnregistrer(b);
+    setOccupe(false);
+    if (message) setErreur(message);
+  }
+
+  function abandonner() {
+    if (rempli && !confirmeAbandon) {
+      setConfirmeAbandon(true);
+      return;
+    }
+    onFermer();
+  }
+
+  return (
+    <div className="j-voile journal">
+      <header className="flex shrink-0 items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--ligne)" }}>
+        {confirmeAbandon ? (
+          <div className="flex min-w-0 items-center gap-2">
+            <button onClick={abandonner} className="j-btn j-btn-doux h-10 !px-3 text-sm" style={{ color: "var(--sceau)" }}>
+              Abandonner la page
+            </button>
+            <button onClick={() => setConfirmeAbandon(false)} className="j-btn h-10 !px-3 text-sm">
+              Continuer d&apos;écrire
+            </button>
+          </div>
+        ) : (
+          <button onClick={abandonner} className="j-btn j-btn-doux h-10 !px-3 text-sm">
+            Annuler
+          </button>
+        )}
+        <div className="flex-1" />
+        <button
+          onClick={() => poser({ favori: !brouillon.favori })}
+          className="j-btn j-btn-doux h-10 w-10 !p-0"
+          aria-label="Favori"
+        >
+          <span style={{ color: brouillon.favori ? "var(--sceau-vif)" : "var(--encre-3)" }}>{brouillon.favori ? "★" : "☆"}</span>
+        </button>
+        <button onClick={enregistrer} disabled={occupe || !rempli} className="j-btn h-10 !px-4 text-sm">
+          {occupe ? "…" : "Enregistrer"}
+        </button>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-16 pt-4">
+        <div className="mx-auto max-w-md space-y-6">
+          {/* Date */}
+          <div className="flex items-center gap-3">
+            <input
+              type="date"
+              className="j-champ w-auto text-sm"
+              value={brouillon.jour}
+              max={aujourdhui()}
+              onChange={(e) => poser({ jour: e.target.value || aujourdhui() })}
+            />
+            <span className="text-xs" style={{ color: "var(--encre-3)" }}>
+              {majuscule(fmtLong.format(dateLocale(brouillon.jour)))}
+            </span>
+          </div>
+
+          {/* Humeur */}
+          <div>
+            <p className="j-etiquette mb-2">Humeur du moment</p>
+            <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1" style={{ scrollbarWidth: "none" }}>
+              {HUMEURS.map((h) => (
+                <button
+                  key={h}
+                  onClick={() => poser({ humeur: brouillon.humeur === h ? null : h })}
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-2xl transition"
+                  style={{
+                    background: brouillon.humeur === h ? "#fff" : "transparent",
+                    border: `1px solid ${brouillon.humeur === h ? "var(--sceau-vif)" : "var(--ligne)"}`,
+                    boxShadow: brouillon.humeur === h ? "0 0 0 3px rgba(196,53,99,0.16)" : "none",
+                  }}
+                >
+                  {h}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Météo intérieure */}
+          <div>
+            <p className="j-etiquette mb-2">Météo intérieure</p>
+            <div className="grid grid-cols-5 gap-1.5">
+              {METEO.map((m) => {
+                const on = brouillon.meteo === m.n;
+                return (
+                  <button
+                    key={m.n}
+                    onClick={() => poser({ meteo: on ? null : m.n })}
+                    className="flex flex-col items-center gap-1 rounded-xl py-2 transition"
+                    style={{
+                      background: on ? "var(--encre)" : "rgba(255,255,255,0.55)",
+                      color: on ? "var(--papier)" : "var(--encre-2)",
+                      border: `1px solid ${on ? "var(--encre)" : "var(--ligne)"}`,
+                    }}
+                  >
+                    <span className="text-xl leading-none">{m.icone}</span>
+                    <span className="text-[10px]">{m.nom}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Titre + texte */}
+          <div>
+            <input
+              className="w-full bg-transparent font-display text-2xl outline-none"
+              style={{ color: "var(--encre)" }}
+              placeholder="Un titre, si le cœur vous en dit"
+              value={brouillon.titre}
+              onChange={(e) => poser({ titre: e.target.value })}
+            />
+            <AutoTexte
+              className="j-champ j-cahier mt-3 w-full text-[15px]"
+              placeholder="Cher journal…"
+              valeur={brouillon.contenu}
+              onValeur={(v) => poser({ contenu: v })}
+            />
+          </div>
+
+          {/* Heureux / triste */}
+          <div className="grid gap-3">
+            <label className="block rounded-2xl p-3" style={{ background: "rgba(46,158,126,0.10)", border: "1px solid rgba(46,158,126,0.25)" }}>
+              <span className="j-etiquette" style={{ color: "var(--sauge)" }}>☀️ Ce qui m&apos;a rendu·e heureux·se</span>
+              <AutoTexte
+                className="mt-1.5 w-full text-sm leading-6"
+                style={{ minHeight: "3rem" }}
+                placeholder="Un geste, une phrase, un moment…"
+                valeur={brouillon.heureux}
+                onValeur={(v) => poser({ heureux: v })}
+              />
+            </label>
+            <label className="block rounded-2xl p-3" style={{ background: "rgba(138,34,70,0.07)", border: "1px solid rgba(138,34,70,0.2)" }}>
+              <span className="j-etiquette" style={{ color: "var(--sceau)" }}>🌧️ Ce qui m&apos;a rendu·e triste</span>
+              <AutoTexte
+                className="mt-1.5 w-full text-sm leading-6"
+                style={{ minHeight: "3rem" }}
+                placeholder="Ce qui pèse, ce qui manque…"
+                valeur={brouillon.triste}
+                onValeur={(v) => poser({ triste: v })}
+              />
+            </label>
+          </div>
+
+          {/* Tags */}
+          <div>
+            <p className="j-etiquette mb-2">Étiquettes</p>
+            <div className="flex flex-wrap gap-1.5">
+              {brouillon.tags.map((t) => (
+                <button key={t} className="j-chip" onClick={() => poser({ tags: brouillon.tags.filter((x) => x !== t) })}>
+                  #{t} <span style={{ color: "var(--encre-3)" }}>×</span>
+                </button>
+              ))}
+              <input
+                className="j-chip min-w-[8rem] flex-1 outline-none"
+                placeholder="#désir, #nous, #doute…"
+                value={tagSaisie}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v.endsWith(",") || v.endsWith(" ")) ajouterTag(v.slice(0, -1));
+                  else {
+                    setTagSaisie(v);
+                    onActivite();
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); ajouterTag(tagSaisie); }
+                  if (e.key === "Backspace" && !tagSaisie && brouillon.tags.length)
+                    poser({ tags: brouillon.tags.slice(0, -1) });
+                }}
+                onBlur={() => tagSaisie && ajouterTag(tagSaisie)}
+              />
+            </div>
+          </div>
+
+          {/* Photo */}
+          <div>
+            <p className="j-etiquette mb-2">Photo</p>
+            {brouillon.photo_path ? (
+              <div className="relative">
+                {urls[brouillon.photo_path] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={urls[brouillon.photo_path]} alt="" className="w-full rounded-2xl object-cover" style={{ maxHeight: "18rem", border: "1px solid var(--ligne)" }} />
+                ) : (
+                  <div className="h-32 rounded-2xl" style={{ background: "var(--papier-3)" }} />
+                )}
+                <button onClick={retirerPhoto} className="j-btn j-btn-doux absolute right-2 top-2 h-9 !px-3 text-xs">Retirer</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => fichierRef.current?.click()}
+                disabled={occupe}
+                className="j-btn j-btn-doux w-full py-4"
+                style={{ borderStyle: "dashed" }}
+              >
+                📷 Joindre une image
+              </button>
+            )}
+            <input
+              ref={fichierRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) joindrePhoto(f);
+                e.target.value = "";
+              }}
+            />
+          </div>
+
+          {erreur && <p className="text-sm" style={{ color: "var(--sceau)" }}>{erreur}</p>}
+
+          {/* Suppression */}
+          {brouillon.id && (
+            <div className="pt-2 text-center">
+              {confirmeSuppr ? (
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-sm" style={{ color: "var(--encre-2)" }}>Déchirer cette page ?</span>
+                  <button
+                    className="j-btn h-9 !px-3 text-xs"
+                    disabled={occupe}
+                    onClick={async () => {
+                      setOccupe(true);
+                      await onSupprimer(brouillon.id!);
+                    }}
+                  >
+                    Oui, supprimer
+                  </button>
+                  <button className="j-btn j-btn-doux h-9 !px-3 text-xs" onClick={() => setConfirmeSuppr(false)}>Non</button>
+                </div>
+              ) : (
+                <button className="text-xs underline-offset-2 hover:underline" style={{ color: "var(--encre-3)" }} onClick={() => setConfirmeSuppr(true)}>
+                  Supprimer cette page
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
