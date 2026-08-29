@@ -5,16 +5,16 @@ import { createClient } from "@/lib/supabase/client";
 import Games from "@/components/Games";
 import OuiNonPeutEtre from "@/components/OuiNonPeutEtre";
 import DesCoquins from "@/components/DesCoquins";
+import TuMeConnais from "@/components/TuMeConnais";
 
 /* =====================================================================
    JEUX — le salon. Chaque mini-jeu est une pièce ; on entre, on ressort.
    Les tuiles « bientôt » annoncent la suite (dés, quiz, action/vérité).
    ===================================================================== */
 
-type Vue = "accueil" | "defis" | "ouinon" | "des";
+type Vue = "accueil" | "defis" | "ouinon" | "des" | "quiz";
 
 const A_VENIR = [
-  { icone: "💬", nom: "Tu me connais ?", accroche: "L'un répond, l'autre devine. Révélation simultanée." },
   { icone: "🎭", nom: "Action ou Vérité", accroche: "Tour par tour, réponses par texte, vocal ou photo." },
 ];
 
@@ -90,6 +90,18 @@ export default function JeuxHub({
     );
   }
 
+  if (vue === "quiz") {
+    return (
+      <TuMeConnais
+        coupleId={coupleId}
+        userId={userId}
+        partenaire={partenaire}
+        monPrenom={monPrenom}
+        retour={() => setVue("accueil")}
+      />
+    );
+  }
+
   /* ---------------------------------------------- Accueil */
   return (
     <div className="mx-auto max-w-md px-5 py-8">
@@ -131,6 +143,22 @@ export default function JeuxHub({
             </span>
           </span>
           <Badge jeu="des" />
+        </button>
+
+        <button
+          onClick={() => setVue("quiz")}
+          className="carte anim-monte flex w-full items-center gap-4 p-4 text-left transition hover:border-bordeaux-vif"
+        >
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-bordeaux to-bordeaux-vif text-xl">
+            💬
+          </span>
+          <span className="min-w-0">
+            <span className="block font-display text-lg">Tu me connais ?</span>
+            <span className="block text-xs leading-snug text-brume">
+              Répondez sur vous, pariez sur l'autre — révélation croisée.
+            </span>
+          </span>
+          <Badge jeu="quiz" />
         </button>
 
         <button
