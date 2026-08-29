@@ -21,11 +21,10 @@ export default async function JeuxPage() {
   if (!couple || !couple.member_b) redirect("/pair");
 
   const partnerId = couple.member_a === user.id ? couple.member_b : couple.member_a;
-  const { data: p } = await supabase
-    .from("profiles")
-    .select("display_name")
-    .eq("id", partnerId)
-    .maybeSingle();
+  const [{ data: p }, { data: moi }] = await Promise.all([
+    supabase.from("profiles").select("display_name").eq("id", partnerId).maybeSingle(),
+    supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
+  ]);
 
   return (
     <AppShell>
@@ -33,6 +32,7 @@ export default async function JeuxPage() {
         coupleId={couple.id}
         userId={user.id}
         partenaire={p?.display_name ?? "Votre moitié"}
+        monPrenom={moi?.display_name ?? ""}
       />
     </AppShell>
   );

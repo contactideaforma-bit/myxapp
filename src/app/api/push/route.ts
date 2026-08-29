@@ -56,6 +56,7 @@ export async function POST(request: Request) {
     idee: "Une nouvelle idée",
     humeur: "Quelqu'un pense à vous",
     defi: "Un défi vous attend",
+    jeu: "On vous attend pour jouer",
   };
 
   let envoyes = 0;
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
           ? libelle[genre] ?? "Nouvelle activité"
           : `${prenom || "Votre moitié"} — ${apercu || libelle[genre]}`,
         tag: genre,
-        url: genre === "idee" ? "/idees" : genre === "defi" ? "/jeux" : "/chat",
+        url: genre === "idee" ? "/idees" : genre === "defi" || genre === "jeu" ? "/jeux" : "/chat",
       });
 
       try {

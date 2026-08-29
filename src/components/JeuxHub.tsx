@@ -3,16 +3,16 @@
 import { useState } from "react";
 import Games from "@/components/Games";
 import OuiNonPeutEtre from "@/components/OuiNonPeutEtre";
+import DesCoquins from "@/components/DesCoquins";
 
 /* =====================================================================
    JEUX — le salon. Chaque mini-jeu est une pièce ; on entre, on ressort.
    Les tuiles « bientôt » annoncent la suite (dés, quiz, action/vérité).
    ===================================================================== */
 
-type Vue = "accueil" | "defis" | "ouinon";
+type Vue = "accueil" | "defis" | "ouinon" | "des";
 
 const A_VENIR = [
-  { icone: "🎲", nom: "Dés coquins", accroche: "Un lancer partagé en direct — action, endroit, minuteur." },
   { icone: "💬", nom: "Tu me connais ?", accroche: "L'un répond, l'autre devine. Révélation simultanée." },
   { icone: "🎭", nom: "Action ou Vérité", accroche: "Tour par tour, réponses par texte, vocal ou photo." },
 ];
@@ -21,10 +21,12 @@ export default function JeuxHub({
   coupleId,
   userId,
   partenaire,
+  monPrenom,
 }: {
   coupleId: string;
   userId: string;
   partenaire: string;
+  monPrenom: string;
 }) {
   const [vue, setVue] = useState<Vue>("accueil");
 
@@ -52,6 +54,18 @@ export default function JeuxHub({
     );
   }
 
+  if (vue === "des") {
+    return (
+      <DesCoquins
+        coupleId={coupleId}
+        userId={userId}
+        partenaire={partenaire}
+        monPrenom={monPrenom}
+        retour={() => setVue("accueil")}
+      />
+    );
+  }
+
   /* ---------------------------------------------- Accueil */
   return (
     <div className="mx-auto max-w-md px-5 py-8">
@@ -74,6 +88,21 @@ export default function JeuxHub({
             <span className="block font-display text-lg">Oui / Non / Peut-être</span>
             <span className="block text-xs leading-snug text-brume">
               Répondez chacun de votre côté ; seules les envies partagées se dévoilent.
+            </span>
+          </span>
+        </button>
+
+        <button
+          onClick={() => setVue("des")}
+          className="carte anim-monte flex w-full items-center gap-4 p-4 text-left transition hover:border-bordeaux-vif"
+        >
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-bordeaux to-bordeaux-vif text-xl">
+            🎲
+          </span>
+          <span className="min-w-0">
+            <span className="block font-display text-lg">Dés coquins</span>
+            <span className="block text-xs leading-snug text-brume">
+              Un lancer, deux téléphones — action, endroit, minuteur partagé.
             </span>
           </span>
         </button>
