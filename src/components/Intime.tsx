@@ -167,28 +167,71 @@ export default function Intime({
 
   /* ============================================================ SCÉNARIOS */
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  /** `${scenario_id}:${user_id}` → date de lecture. Un « vu » ne compte
+      que s'il est postérieur à la dernière modification du texte. */
+  const [lectures, setLectures] = useState<Record<string, string>>({});
   const [edite, setEdite] = useState<Scenario | null>(null);
   const [titre, setTitre] = useState("");
   const [contenu, setContenu] = useState("");
   const [enregistre, setEnregistre] = useState(false);
 
   const chargerScenarios = useCallback(async () => {
-    const { data } = await supabase
-      .from("scenarios")
-      .select("*")
-      .eq("couple_id", coupleId)
-      .order("updated_at", { ascending: false });
+    const [{ data }, { data: lus }] = await Promise.all([
+      supabase
+        .from("scenarios")
+        .select("*")
+        .eq("couple_id", coupleId)
+        .order("updated_at", { ascending: false }),
+      supabase.from("scenario_reads").select("scenario_id, user_id, vu_le"),
+    ]);
     setScenarios((data ?? []) as Scenario[]);
+    const carte: Record<string, string> = {};
+    ((lus ?? []) as { scenario_id: string; user_id: string; vu_le: string }[]).forEach((r) => {
+      carte[`${r.scenario_id}:${r.user_id}`] = r.vu_le;
+    });
+    setLectures(carte);
   }, [supabase, coupleId]);
 
   useEffect(() => {
     chargerScenarios();
   }, [chargerScenarios]);
 
+  /* Le ✓✓ arrive en direct quand l'autre ouvre un texte — et ses
+     nouveaux scénarios apparaissent sans recharger. */
+  useEffect(() => {
+    const canal = supabase
+      .channel(`intime-${coupleId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "scenarios", filter: `couple_id=eq.${coupleId}` },
+        () => chargerScenarios()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "scenario_reads" },
+        () => chargerScenarios()
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [supabase, coupleId, chargerScenarios]);
+
+  /** Le « vu » ne vaut que s'il est postérieur à la dernière retouche. */
+  const vuValide = (iso: string | undefined, maj: string) =>
+    !!iso && new Date(iso).getTime() >= new Date(maj).getTime();
+
   function ouvrirScenario(s: Scenario | null) {
     setEdite(s);
     setTitre(s?.titre ?? "");
     setContenu(s?.contenu ?? "");
+    if (s?.id && s.auteur && s.auteur !== userId) {
+      setLectures((p) => ({ ...p, [`${s.id}:${userId}`]: new Date().toISOString() }));
+      supabase.rpc("scenario_marquer_lu", { p_scenario: s.id }).then(
+        () => {},
+        () => {}
+      );
+    }
   }
 
   async function sauverScenario() {
@@ -417,6 +460,16 @@ export default function Intime({
             <button className="btn mt-3" onClick={sauverScenario}>
               {enregistre ? "✓ Enregistré" : "Enregistrer"}
             </button>
+
+            {edite?.id && edite.auteur === userId && (
+              <p className="mt-3 text-center text-[11px] text-brume">
+                {vuValide(lectures[`${edite.id}:${partenaire.id}`], edite.updated_at) ? (
+                  <span style={{ color: "var(--color-menthe)" }}>✓✓ {partenaire.nom} a lu ce texte</span>
+                ) : (
+                  <>✓ {partenaire.nom} n'a pas encore lu cette version</>
+                )}
+              </p>
+            )}
           </>
         ) : (
           <>
@@ -458,6 +511,29 @@ export default function Intime({
                         month: "short",
                       })}
                     </span>
+                    {s.auteur === userId ? (
+                      vuValide(lectures[`${s.id}:${partenaire.id}`], s.updated_at) ? (
+                        <span
+                          style={{ color: "var(--color-menthe)" }}
+                          title={`Vu par ${partenaire.nom} le ${new Date(
+                            lectures[`${s.id}:${partenaire.id}`]
+                          ).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`}
+                        >
+                          ✓✓ vu
+                        </span>
+                      ) : (
+                        <span title={`${partenaire.nom} n'a pas (re)lu ce texte`}>✓ pas encore lu</span>
+                      )
+                    ) : (
+                      !vuValide(lectures[`${s.id}:${userId}`], s.updated_at) && (
+                        <span
+                          className="rounded-full px-1.5 font-semibold text-white"
+                          style={{ background: "var(--color-bordeaux-vif)" }}
+                        >
+                          nouveau
+                        </span>
+                      )
+                    )}
                     <span className="flex-1" />
                     <button
                       onClick={() => basculerFavori(s)}
