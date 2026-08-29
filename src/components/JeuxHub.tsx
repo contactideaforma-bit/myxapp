@@ -1,0 +1,112 @@
+"use client";
+
+import { useState } from "react";
+import Games from "@/components/Games";
+import OuiNonPeutEtre from "@/components/OuiNonPeutEtre";
+
+/* =====================================================================
+   JEUX — le salon. Chaque mini-jeu est une pièce ; on entre, on ressort.
+   Les tuiles « bientôt » annoncent la suite (dés, quiz, action/vérité).
+   ===================================================================== */
+
+type Vue = "accueil" | "defis" | "ouinon";
+
+const A_VENIR = [
+  { icone: "🎲", nom: "Dés coquins", accroche: "Un lancer partagé en direct — action, endroit, minuteur." },
+  { icone: "💬", nom: "Tu me connais ?", accroche: "L'un répond, l'autre devine. Révélation simultanée." },
+  { icone: "🎭", nom: "Action ou Vérité", accroche: "Tour par tour, réponses par texte, vocal ou photo." },
+];
+
+export default function JeuxHub({
+  coupleId,
+  userId,
+  partenaire,
+}: {
+  coupleId: string;
+  userId: string;
+  partenaire: string;
+}) {
+  const [vue, setVue] = useState<Vue>("accueil");
+
+  if (vue === "defis") {
+    return (
+      <div>
+        <div className="mx-auto max-w-md px-5 pt-6">
+          <button onClick={() => setVue("accueil")} className="text-xs text-brume">
+            ← Les jeux
+          </button>
+        </div>
+        <Games coupleId={coupleId} userId={userId} />
+      </div>
+    );
+  }
+
+  if (vue === "ouinon") {
+    return (
+      <OuiNonPeutEtre
+        coupleId={coupleId}
+        userId={userId}
+        partenaire={partenaire}
+        retour={() => setVue("accueil")}
+      />
+    );
+  }
+
+  /* ---------------------------------------------- Accueil */
+  return (
+    <div className="mx-auto max-w-md px-5 py-8">
+      <header className="mb-6 text-center">
+        <h1 className="font-display text-3xl">Jeux</h1>
+        <p className="mt-1 text-sm text-brume">
+          À deux, même à distance — chacun sur son téléphone, la même partie.
+        </p>
+      </header>
+
+      <div className="space-y-3">
+        <button
+          onClick={() => setVue("ouinon")}
+          className="carte anim-monte flex w-full items-center gap-4 p-4 text-left transition hover:border-bordeaux-vif"
+        >
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-bordeaux to-bordeaux-vif text-xl">
+            💘
+          </span>
+          <span className="min-w-0">
+            <span className="block font-display text-lg">Oui / Non / Peut-être</span>
+            <span className="block text-xs leading-snug text-brume">
+              Répondez chacun de votre côté ; seules les envies partagées se dévoilent.
+            </span>
+          </span>
+        </button>
+
+        <button
+          onClick={() => setVue("defis")}
+          className="carte anim-monte flex w-full items-center gap-4 p-4 text-left transition hover:border-bordeaux-vif"
+        >
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-bordeaux to-bordeaux-vif text-xl">
+            🃏
+          </span>
+          <span className="min-w-0">
+            <span className="block font-display text-lg">Défis à deux</span>
+            <span className="block text-xs leading-snug text-brume">
+              5 thèmes, 50 défis — la carte tirée s'affiche chez vous deux en même temps.
+            </span>
+          </span>
+        </button>
+
+        <p className="pt-3 text-[10px] uppercase tracking-[0.25em] text-brume">Bientôt sur la table</p>
+
+        {A_VENIR.map((j) => (
+          <div key={j.nom} className="carte flex w-full items-center gap-4 border-dashed p-4 opacity-60">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-bord text-xl">
+              {j.icone}
+            </span>
+            <span className="min-w-0">
+              <span className="block font-display text-lg">{j.nom}</span>
+              <span className="block text-xs leading-snug text-brume">{j.accroche}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
