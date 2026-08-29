@@ -264,7 +264,9 @@ export default function ChatRoom({
      On ne ramène en bas que si l'on y était déjà : sinon, remonter dans
      l'historique devient impossible dès qu'un message arrive. */
   const filRef = useRef<HTMLElement>(null);
+  const contenuRef = useRef<HTMLDivElement>(null);
   const enBasRef = useRef(true);
+  const premierRenduRef = useRef(true);
 
   useEffect(() => {
     const el = filRef.current;
@@ -276,9 +278,34 @@ export default function ChatRoom({
     return () => el.removeEventListener("scroll", surDefilement);
   }, []);
 
+  /* Arrivée dans la conversation : on saute directement en bas (sans
+     animation), puis l'observateur ci-dessous nous y maintient pendant
+     que photos, GIF et vocaux finissent de charger et poussent la page. */
   useEffect(() => {
-    if (enBasRef.current) finRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!enBasRef.current) return;
+    if (premierRenduRef.current) {
+      if (visibles.length === 0) return;
+      premierRenduRef.current = false;
+      const el = filRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    } else {
+      finRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [visibles.length, partenaireEcrit, reactions.length]);
+
+  /* Tant qu'on est en bas, toute croissance du contenu (une image qui
+     finit de charger, une onde vocale…) re-colle la vue au dernier
+     message — c'était la cause du chat qui s'ouvrait « plus haut ». */
+  useEffect(() => {
+    const contenu = contenuRef.current;
+    const el = filRef.current;
+    if (!contenu || !el) return;
+    const ro = new ResizeObserver(() => {
+      if (enBasRef.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(contenu);
+    return () => ro.disconnect();
+  }, []);
 
   /* ------------------------------------------------ Mode discret */
   useEffect(() => {
@@ -703,7 +730,8 @@ export default function ChatRoom({
       </header>
 
       {/* FIL */}
-      <main ref={filRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-6">
+      <main ref={filRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
+        <div ref={contenuRef} className="space-y-3">
         {visibles.length === 0 && (
           <div className="vide anim-monte">
             <span className="vide-emoji">🕯️</span>
@@ -811,6 +839,7 @@ export default function ChatRoom({
           );
         })}
         <div ref={finRef} />
+        </div>
       </main>
 
       {/* COMPOSITEUR */}

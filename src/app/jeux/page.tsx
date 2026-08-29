@@ -31,6 +31,7 @@ export default async function JeuxPage() {
       <JeuxHub
         coupleId={couple.id}
         userId={user.id}
+        partenaireId={partnerId}
         partenaire={p?.display_name ?? "Votre moitié"}
         monPrenom={moi?.display_name ?? ""}
       />

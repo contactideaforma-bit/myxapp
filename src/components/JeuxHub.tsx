@@ -6,26 +6,25 @@ import Games from "@/components/Games";
 import OuiNonPeutEtre from "@/components/OuiNonPeutEtre";
 import DesCoquins from "@/components/DesCoquins";
 import TuMeConnais from "@/components/TuMeConnais";
+import ActionVerite from "@/components/ActionVerite";
 
 /* =====================================================================
    JEUX — le salon. Chaque mini-jeu est une pièce ; on entre, on ressort.
    Les tuiles « bientôt » annoncent la suite (dés, quiz, action/vérité).
    ===================================================================== */
 
-type Vue = "accueil" | "defis" | "ouinon" | "des" | "quiz";
-
-const A_VENIR = [
-  { icone: "🎭", nom: "Action ou Vérité", accroche: "Tour par tour, réponses par texte, vocal ou photo." },
-];
+type Vue = "accueil" | "defis" | "ouinon" | "des" | "quiz" | "av";
 
 export default function JeuxHub({
   coupleId,
   userId,
+  partenaireId,
   partenaire,
   monPrenom,
 }: {
   coupleId: string;
   userId: string;
+  partenaireId: string;
   partenaire: string;
   monPrenom: string;
 }) {
@@ -102,6 +101,19 @@ export default function JeuxHub({
     );
   }
 
+  if (vue === "av") {
+    return (
+      <ActionVerite
+        coupleId={coupleId}
+        userId={userId}
+        partenaireId={partenaireId}
+        partenaire={partenaire}
+        monPrenom={monPrenom}
+        retour={() => setVue("accueil")}
+      />
+    );
+  }
+
   /* ---------------------------------------------- Accueil */
   return (
     <div className="mx-auto max-w-md px-5 py-8">
@@ -162,6 +174,22 @@ export default function JeuxHub({
         </button>
 
         <button
+          onClick={() => setVue("av")}
+          className="carte anim-monte flex w-full items-center gap-4 p-4 text-left transition hover:border-bordeaux-vif"
+        >
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-bordeaux to-bordeaux-vif text-xl">
+            🎭
+          </span>
+          <span className="min-w-0">
+            <span className="block font-display text-lg">Action ou Vérité</span>
+            <span className="block text-xs leading-snug text-brume">
+              Chacun son tour — la réponse se donne dans « Nous ».
+            </span>
+          </span>
+          <Badge jeu="av" />
+        </button>
+
+        <button
           onClick={() => setVue("defis")}
           className="carte anim-monte flex w-full items-center gap-4 p-4 text-left transition hover:border-bordeaux-vif"
         >
@@ -176,20 +204,6 @@ export default function JeuxHub({
           </span>
           <Badge jeu="defis" />
         </button>
-
-        <p className="pt-3 text-[10px] uppercase tracking-[0.25em] text-brume">Bientôt sur la table</p>
-
-        {A_VENIR.map((j) => (
-          <div key={j.nom} className="carte flex w-full items-center gap-4 border-dashed p-4 opacity-60">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-bord text-xl">
-              {j.icone}
-            </span>
-            <span className="min-w-0">
-              <span className="block font-display text-lg">{j.nom}</span>
-              <span className="block text-xs leading-snug text-brume">{j.accroche}</span>
-            </span>
-          </div>
-        ))}
       </div>
     </div>
   );
