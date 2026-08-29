@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import Games from "@/components/Games";
 import OuiNonPeutEtre from "@/components/OuiNonPeutEtre";
 import DesCoquins from "@/components/DesCoquins";
@@ -29,6 +30,29 @@ export default function JeuxHub({
   monPrenom: string;
 }) {
   const [vue, setVue] = useState<Vue>("accueil");
+  const [supabase] = useState(() => createClient());
+  /** Coups de l'autre pas encore vus, par jeu — pour les badges des tuiles. */
+  const [nonVus, setNonVus] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (vue !== "accueil") return;
+    supabase.rpc("jeux_non_vus").then(({ data }) => {
+      setNonVus((data ?? {}) as Record<string, number>);
+    });
+  }, [vue, supabase]);
+
+  const Badge = ({ jeu }: { jeu: string }) => {
+    const n = nonVus[jeu] ?? 0;
+    if (!n) return null;
+    return (
+      <span
+        className="ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+        style={{ background: "var(--color-bordeaux-vif)" }}
+      >
+        {n} nouveau{n > 1 ? "x" : ""}
+      </span>
+    );
+  };
 
   if (vue === "defis") {
     return (
@@ -105,6 +129,7 @@ export default function JeuxHub({
               Un lancer, deux téléphones — action, endroit, minuteur partagé.
             </span>
           </span>
+          <Badge jeu="des" />
         </button>
 
         <button

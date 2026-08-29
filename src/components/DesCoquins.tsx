@@ -20,7 +20,26 @@ type EtatDes = {
   minuteur_fin: string | null;
 };
 
+/** Un coup du journal de la partie — permet de jouer en différé. */
+type Coup = {
+  id: string;
+  par: string;
+  charge: { a: number; e: number };
+  created_at: string;
+  vu_le: string | null;
+};
+
 const alea = (n: number) => Math.floor(Math.random() * n);
+
+const fmtHeure = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+function depuis(iso: string, maintenant: number): string {
+  const s = Math.max(0, (maintenant - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "à l'instant";
+  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
+  if (s < 24 * 3600) return `il y a ${Math.floor(s / 3600)} h`;
+  return `le ${new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} à ${fmtHeure.format(new Date(iso))}`;
+}
 
 export default function DesCoquins({
   coupleId,
@@ -38,6 +57,7 @@ export default function DesCoquins({
   const [supabase] = useState(() => createClient());
   const [etat, setEtat] = useState<EtatDes | null>(null);
   const [affiche, setAffiche] = useState<{ a: number; e: number } | null>(null);
+  const [flux, setFlux] = useState<Coup[]>([]);
   const [roule, setRoule] = useState(false);
   const [charge, setCharge] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -46,6 +66,27 @@ export default function DesCoquins({
   const pushRef = useRef(0);
   const sonneRef = useRef(0);
   const animRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* ------------------------------------------------ Journal des coups */
+  const chargerFlux = useCallback(async () => {
+    const { data } = await supabase
+      .from("game_events")
+      .select("id, par, charge, created_at, vu_le")
+      .eq("couple_id", coupleId)
+      .eq("jeu", "des")
+      .order("created_at", { ascending: false })
+      .limit(12);
+    setFlux((data ?? []) as Coup[]);
+  }, [supabase, coupleId]);
+
+  /* Ouvrir le jeu (ou voir arriver un coup) = l'avoir vu.
+     ⚠ rpc sans .then ne part jamais (piège n°1). */
+  const marquerVu = useCallback(() => {
+    supabase.rpc("jeu_marquer_vu", { p_jeu: "des" }).then(
+      () => {},
+      () => {}
+    );
+  }, [supabase]);
 
   /* ------------------------------------------------ Animation */
   const animerVers = useCallback((final: { a: number; e: number }) => {
@@ -98,9 +139,10 @@ export default function DesCoquins({
 
   useEffect(() => {
     charger(false);
-  }, [charger]);
+    chargerFlux().then(marquerVu);
+  }, [charger, chargerFlux, marquerVu]);
 
-  /* Le lancer de l'autre arrive par ici. */
+  /* Le lancer de l'autre arrive par ici — et son « vu » sur mes coups aussi. */
   useEffect(() => {
     const canal = supabase
       .channel(`des-${coupleId}`)
@@ -117,11 +159,33 @@ export default function DesCoquins({
           if (!ligne || ligne.jeu === "des") charger(true);
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "game_events",
+          filter: `couple_id=eq.${coupleId}`,
+        },
+        (p) => {
+          const ligne = p.new as { jeu?: string; par?: string } | null;
+          if (ligne && ligne.jeu !== "des") return;
+          chargerFlux();
+          // Un coup de l'autre pendant que j'ai le jeu ouvert : vu aussitôt.
+          if (p.eventType === "INSERT" && ligne?.par && ligne.par !== userId) marquerVu();
+        }
+      )
       .subscribe();
     return () => {
       supabase.removeChannel(canal);
     };
-  }, [supabase, coupleId, charger]);
+  }, [supabase, coupleId, userId, charger, chargerFlux, marquerVu]);
+
+  /* Rafraîchit les « il y a X min » du fil. */
+  useEffect(() => {
+    const t = setInterval(() => setTic(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   /* Horloge du minuteur. */
   useEffect(() => {
@@ -163,7 +227,14 @@ export default function DesCoquins({
       .from("game_sessions")
       .upsert({ couple_id: coupleId, jeu: "des", etat: nouveau }, { onConflict: "couple_id,jeu" });
     if (error) setErreur(error.message);
-    else prevenir();
+    else {
+      // Le coup entre au journal : l'autre le verra même en différé.
+      await supabase
+        .from("game_events")
+        .insert({ couple_id: coupleId, jeu: "des", par: userId, charge: { a: nouveau.a, e: nouveau.e } });
+      chargerFlux();
+      prevenir();
+    }
   }
 
   async function poserMinuteur(secondes: number) {
@@ -293,6 +364,43 @@ export default function DesCoquins({
           </p>
         )}
       </div>
+
+      {/* ------------------------------------------ Le fil des lancers */}
+      {flux.length > 0 && (
+        <section className="mt-10">
+          <p className="mb-2 text-[10px] uppercase tracking-[0.25em] text-brume">Derniers lancers</p>
+          <div className="space-y-1.5">
+            {flux.map((c) => {
+              const deMoi = c.par === userId;
+              return (
+                <div key={c.id} className="carte flex items-center gap-3 px-3 py-2.5">
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: deMoi ? "var(--color-bordeaux-vif)" : "var(--color-menthe)" }}
+                  />
+                  <p className="min-w-0 flex-1 truncate text-sm">
+                    <span className="text-brume">{deMoi ? "Vous" : partenaire} : </span>
+                    {DE_ACTIONS[c.charge.a]} {DE_ENDROITS[c.charge.e]}
+                  </p>
+                  <span className="shrink-0 text-[10px] text-brume">{depuis(c.created_at, tic)}</span>
+                  {deMoi && (
+                    <span
+                      className="shrink-0 text-[10px]"
+                      style={{ color: c.vu_le ? "var(--color-menthe)" : "var(--color-brume)" }}
+                      title={c.vu_le ? `Vu ${depuis(c.vu_le, tic)}` : "Pas encore vu"}
+                    >
+                      {c.vu_le ? "✓✓" : "✓"}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-center text-[10px] leading-relaxed text-brume">
+            ✓✓ = {partenaire} l&apos;a vu. Le fil s&apos;efface au bout de 30 jours.
+          </p>
+        </section>
+      )}
     </div>
   );
 }
