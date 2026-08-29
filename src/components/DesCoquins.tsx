@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { DE_ACTIONS, DE_ENDROITS, MINUTEURS } from "@/data/des";
+import ReactionCoup from "@/components/ReactionCoup";
 
 /* =====================================================================
    DÉS COQUINS — un lancer, une seule vérité : celui qui lance écrit le
@@ -27,6 +28,7 @@ type Coup = {
   charge: { a: number; e: number };
   created_at: string;
   vu_le: string | null;
+  reaction: string | null;
 };
 
 const alea = (n: number) => Math.floor(Math.random() * n);
@@ -71,7 +73,7 @@ export default function DesCoquins({
   const chargerFlux = useCallback(async () => {
     const { data } = await supabase
       .from("game_events")
-      .select("id, par, charge, created_at, vu_le")
+      .select("id, par, charge, created_at, vu_le, reaction")
       .eq("couple_id", coupleId)
       .eq("jeu", "des")
       .order("created_at", { ascending: false })
@@ -87,6 +89,13 @@ export default function DesCoquins({
       () => {}
     );
   }, [supabase]);
+
+  function reagir(id: string, emoji: string | null) {
+    supabase.rpc("jeu_reagir", { p_event: id, p_emoji: emoji }).then(
+      () => chargerFlux(),
+      () => {}
+    );
+  }
 
   /* ------------------------------------------------ Animation */
   const animerVers = useCallback((final: { a: number; e: number }) => {
@@ -392,6 +401,7 @@ export default function DesCoquins({
                       {c.vu_le ? "✓✓" : "✓"}
                     </span>
                   )}
+                  <ReactionCoup deMoi={deMoi} reaction={c.reaction} onChoisir={(em) => reagir(c.id, em)} />
                 </div>
               );
             })}

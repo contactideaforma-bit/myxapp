@@ -62,7 +62,7 @@ export default function JeuxHub({
             ← Les jeux
           </button>
         </div>
-        <Games coupleId={coupleId} userId={userId} />
+        <Games coupleId={coupleId} userId={userId} partenaire={partenaire} />
       </div>
     );
   }
@@ -114,6 +114,7 @@ export default function JeuxHub({
               Répondez chacun de votre côté ; seules les envies partagées se dévoilent.
             </span>
           </span>
+          <Badge jeu="ouinon" />
         </button>
 
         <button
@@ -145,6 +146,7 @@ export default function JeuxHub({
               5 thèmes, 50 défis — la carte tirée s'affiche chez vous deux en même temps.
             </span>
           </span>
+          <Badge jeu="defis" />
         </button>
 
         <p className="pt-3 text-[10px] uppercase tracking-[0.25em] text-brume">Bientôt sur la table</p>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { CARTES_ONP, CARTE_PAR_CLE, INTENSITES_ONP, type IntensiteONP } from "@/data/ouinon";
+import ReactionCoup from "@/components/ReactionCoup";
 
 /* =====================================================================
    OUI / NON / PEUT-ÊTRE — chacun répond de son côté au même paquet
@@ -19,7 +20,25 @@ type Accord = {
   forme_le: string;
 };
 
+/** Le coup game_events associé à un accord : porte le ✓✓ vu et la réaction. */
+type EvAccord = {
+  id: string;
+  par: string;
+  vu_le: string | null;
+  reaction: string | null;
+};
+
 const ETIQUETTE: Record<Reponse, string> = { oui: "Oui", peutetre: "Peut-être", non: "Non" };
+
+const fmtHeureONP = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+function depuisONP(iso: string, maintenant: number): string {
+  const s = Math.max(0, (maintenant - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "à l'instant";
+  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
+  if (s < 24 * 3600) return `il y a ${Math.floor(s / 3600)} h`;
+  return `le ${new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} à ${fmtHeureONP.format(new Date(iso))}`;
+}
 
 export default function OuiNonPeutEtre({
   coupleId,
@@ -35,24 +54,37 @@ export default function OuiNonPeutEtre({
   const [supabase] = useState(() => createClient());
   const [mesReponses, setMesReponses] = useState<Record<string, Reponse>>({});
   const [accords, setAccords] = useState<Accord[]>([]);
+  const [evenements, setEvenements] = useState<Record<string, EvAccord>>({});
   const [autreCompte, setAutreCompte] = useState(0);
   const [charge, setCharge] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [ecran, setEcran] = useState<"menu" | "cartes" | "accords">("menu");
   const [intensite, setIntensite] = useState<IntensiteONP>(1);
-  const [voirReponses, setVoirReponses] = useState(false);
   const [flashAccord, setFlashAccord] = useState(false);
+  const [tic, setTic] = useState(Date.now());
   const nbAccordsRef = useRef<number | null>(null);
 
   /* ------------------------------------------------ Chargement */
   const relever = useCallback(async () => {
-    const [{ data: acc }, { data: prog }] = await Promise.all([
+    const [{ data: acc }, { data: prog }, { data: evs }] = await Promise.all([
       supabase.rpc("onp_accords"),
       supabase.rpc("onp_progression"),
+      supabase
+        .from("game_events")
+        .select("id, par, vu_le, reaction, charge")
+        .eq("couple_id", coupleId)
+        .eq("jeu", "ouinon")
+        .limit(200),
     ]);
     const liste = (acc ?? []) as Accord[];
     setAccords(liste);
     setAutreCompte(((prog ?? {}) as { autre?: number }).autre ?? 0);
+
+    const carte: Record<string, EvAccord> = {};
+    ((evs ?? []) as (EvAccord & { charge: { carte?: string } })[]).forEach((e) => {
+      if (e.charge?.carte) carte[e.charge.carte] = e;
+    });
+    setEvenements(carte);
 
     // Petit feu d'artifice quand un nouvel accord se forme.
     if (nbAccordsRef.current !== null && liste.length > nbAccordsRef.current) {
@@ -60,7 +92,22 @@ export default function OuiNonPeutEtre({
       setTimeout(() => setFlashAccord(false), 4000);
     }
     nbAccordsRef.current = liste.length;
-  }, [supabase]);
+  }, [supabase, coupleId]);
+
+  /* Regarder les accords = les avoir vus. (⚠ rpc sans .then ne part pas) */
+  const marquerVu = useCallback(() => {
+    supabase.rpc("jeu_marquer_vu", { p_jeu: "ouinon" }).then(
+      () => relever(),
+      () => {}
+    );
+  }, [supabase, relever]);
+
+  function reagir(id: string, emoji: string | null) {
+    supabase.rpc("jeu_reagir", { p_event: id, p_emoji: emoji }).then(
+      () => relever(),
+      () => {}
+    );
+  }
 
   const charger = useCallback(async () => {
     const { data } = await supabase
@@ -81,7 +128,8 @@ export default function OuiNonPeutEtre({
     charger();
   }, [charger]);
 
-  /* Quand l'autre répond, le trigger tape sur onp_activite → on relève. */
+  /* Quand l'autre répond, le trigger tape sur onp_activite → on relève.
+     Les coups (accords, vu, réactions) arrivent par game_events. */
   useEffect(() => {
     const canal = supabase
       .channel(`onp-${coupleId}`)
@@ -95,11 +143,36 @@ export default function OuiNonPeutEtre({
         },
         () => relever()
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "game_events",
+          filter: `couple_id=eq.${coupleId}`,
+        },
+        (p) => {
+          const ligne = (p.new ?? p.old) as { jeu?: string } | null;
+          if (!ligne || ligne.jeu === "ouinon") relever();
+        }
+      )
       .subscribe();
     return () => {
       supabase.removeChannel(canal);
     };
   }, [supabase, coupleId, relever]);
+
+  /* Ouvrir l'écran des accords marque les nouveaux comme vus. */
+  useEffect(() => {
+    if (ecran === "accords") marquerVu();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ecran, accords.length]);
+
+  /* Rafraîchit les « il y a X min ». */
+  useEffect(() => {
+    const t = setInterval(() => setTic(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   /* ------------------------------------------------ Répondre */
   async function repondre(carte: string, reponse: Reponse) {
@@ -115,6 +188,25 @@ export default function OuiNonPeutEtre({
     else await relever(); // ma réponse a peut-être formé un accord
   }
 
+  /** Effacer une réponse : la carte revient dans le paquet ; si elle
+      formait un accord, il disparaît (trigger côté base). */
+  async function effacer(carte: string) {
+    setErreur(null);
+    setMesReponses((p) => {
+      const suite = { ...p };
+      delete suite[carte];
+      return suite;
+    });
+    const { error } = await supabase
+      .from("onp_reponses")
+      .delete()
+      .eq("couple_id", coupleId)
+      .eq("user_id", userId)
+      .eq("carte", carte);
+    if (error) setErreur(error.message);
+    else await relever();
+  }
+
   /* ------------------------------------------------ Dérivés */
   const cartesNiveau = CARTES_ONP.filter((c) => c.intensite === intensite);
   const restantes = cartesNiveau.filter((c) => !mesReponses[c.cle]);
@@ -122,6 +214,44 @@ export default function OuiNonPeutEtre({
   const totalRepondu = Object.keys(mesReponses).length;
   const accordsOui = accords.filter((a) => a.ma_reponse === "oui" && a.sa_reponse === "oui");
   const accordsPeutEtre = accords.filter((a) => a.ma_reponse !== "oui" || a.sa_reponse !== "oui");
+
+  /** Une carte d'accord : le texte, qui a vu, et la réaction de l'autre. */
+  const AccordCarte = ({ accord, details = false }: { accord: Accord; details?: boolean }) => {
+    const ev = evenements[accord.carte];
+    const deMoi = ev?.par === userId; // mon dernier « oui » a formé l'accord
+    return (
+      <div className="carte anim-monte p-4">
+        <p className="font-display text-lg leading-snug text-champagne">
+          {CARTE_PAR_CLE[accord.carte]?.texte ?? accord.carte}
+        </p>
+        {details && (
+          <p className="mt-1 text-[11px] text-brume">
+            Vous : {ETIQUETTE[accord.ma_reponse]} · {partenaire} : {ETIQUETTE[accord.sa_reponse]}
+          </p>
+        )}
+        {ev && (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-[10px] text-brume">{depuisONP(accord.forme_le, tic)}</span>
+            {deMoi && (
+              <span
+                className="text-[10px]"
+                style={{ color: ev.vu_le ? "var(--color-menthe)" : "var(--color-brume)" }}
+              >
+                {ev.vu_le ? `✓✓ vu par ${partenaire}` : `✓ pas encore vu par ${partenaire}`}
+              </span>
+            )}
+            <span className="ml-auto">
+              <ReactionCoup
+                deMoi={deMoi}
+                reaction={ev.reaction}
+                onChoisir={(em) => reagir(ev.id, em)}
+              />
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (charge) {
     return <p className="py-20 text-center text-sm text-brume">…</p>;
@@ -185,7 +315,6 @@ export default function OuiNonPeutEtre({
                 key={n.n}
                 onClick={() => {
                   setIntensite(n.n);
-                  setVoirReponses(false);
                   setEcran("cartes");
                 }}
                 className="carte anim-monte flex w-full items-center gap-4 p-4 text-left transition hover:border-bordeaux-vif"
@@ -215,7 +344,7 @@ export default function OuiNonPeutEtre({
             {cartesNiveau.length - restantes.length}/{cartesNiveau.length}
           </p>
 
-          {carteCourante && !voirReponses ? (
+          {carteCourante ? (
             <div key={carteCourante.cle} className="anim-monte">
               <div className="carte relative overflow-hidden p-7 text-center">
                 <span className="absolute -right-6 -top-6 text-8xl opacity-[0.06]">💘</span>
@@ -239,8 +368,8 @@ export default function OuiNonPeutEtre({
                 {partenaire} ne verra votre réponse que si les deux disent oui ou peut-être.
               </p>
             </div>
-          ) : !voirReponses ? (
-            <div className="anim-monte carte grid h-56 place-items-center border-dashed p-6 text-center">
+          ) : (
+            <div className="anim-monte carte grid h-40 place-items-center border-dashed p-6 text-center">
               <div>
                 <p className="text-3xl">🎉</p>
                 <p className="mt-2 max-w-[16rem] text-sm leading-relaxed text-brume">
@@ -248,39 +377,55 @@ export default function OuiNonPeutEtre({
                 </p>
               </div>
             </div>
-          ) : null}
+          )}
 
-          <button
-            onClick={() => setVoirReponses((v) => !v)}
-            className="mt-6 block w-full text-center text-xs text-brume underline"
-          >
-            {voirReponses ? "Revenir aux cartes" : "Revoir / changer mes réponses"}
-          </button>
-
-          {voirReponses && (
-            <div className="mt-4 space-y-2">
-              {cartesNiveau.map((c) => (
-                <div key={c.cle} className="carte flex items-center gap-3 p-3">
-                  <p className="min-w-0 flex-1 text-sm leading-snug">{c.texte}</p>
-                  <div className="flex shrink-0 gap-1">
-                    {(["non", "peutetre", "oui"] as Reponse[]).map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => repondre(c.cle, r)}
-                        className="rounded-full border px-2 py-1 text-[10px] transition"
-                        style={{
-                          borderColor: mesReponses[c.cle] === r ? "var(--color-bordeaux-vif)" : "var(--color-bord)",
-                          background: mesReponses[c.cle] === r ? "var(--color-bordeaux)" : "transparent",
-                          color: mesReponses[c.cle] === r ? "#fff" : "var(--color-brume)",
-                        }}
-                      >
-                        {ETIQUETTE[r]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+          {/* Vos réponses, juste en dessous : modifiables, effaçables. */}
+          {cartesNiveau.some((c) => mesReponses[c.cle]) && (
+            <section className="mt-8">
+              <p className="mb-2 text-[10px] uppercase tracking-[0.25em] text-brume">
+                Vos réponses dans ce paquet
+              </p>
+              <div className="space-y-2">
+                {cartesNiveau
+                  .filter((c) => mesReponses[c.cle])
+                  .map((c) => (
+                    <div key={c.cle} className="carte p-3">
+                      <div className="flex items-start gap-2">
+                        <p className="min-w-0 flex-1 text-sm leading-snug">
+                          {c.texte}
+                          {evenements[c.cle] && (
+                            <span className="ml-1.5 text-xs" title="Accord !">💘</span>
+                          )}
+                        </p>
+                        <button
+                          onClick={() => effacer(c.cle)}
+                          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs text-brume transition hover:text-orrose"
+                          aria-label="Effacer cette réponse"
+                          title="Effacer — la carte reviendra dans le paquet"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="mt-2 flex gap-1">
+                        {(["non", "peutetre", "oui"] as Reponse[]).map((r) => (
+                          <button
+                            key={r}
+                            onClick={() => repondre(c.cle, r)}
+                            className="rounded-full border px-2 py-1 text-[10px] transition"
+                            style={{
+                              borderColor: mesReponses[c.cle] === r ? "var(--color-bordeaux-vif)" : "var(--color-bord)",
+                              background: mesReponses[c.cle] === r ? "var(--color-bordeaux)" : "transparent",
+                              color: mesReponses[c.cle] === r ? "#fff" : "var(--color-brume)",
+                            }}
+                          >
+                            {ETIQUETTE[r]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </section>
           )}
         </div>
       )}
@@ -304,11 +449,7 @@ export default function OuiNonPeutEtre({
               </p>
               <div className="space-y-2">
                 {accordsOui.map((a) => (
-                  <div key={a.carte} className="carte anim-monte p-4">
-                    <p className="font-display text-lg leading-snug text-champagne">
-                      {CARTE_PAR_CLE[a.carte]?.texte ?? a.carte}
-                    </p>
-                  </div>
+                  <AccordCarte key={a.carte} accord={a} />
                 ))}
               </div>
             </section>
@@ -321,14 +462,7 @@ export default function OuiNonPeutEtre({
               </p>
               <div className="space-y-2">
                 {accordsPeutEtre.map((a) => (
-                  <div key={a.carte} className="carte anim-monte p-4">
-                    <p className="font-display text-lg leading-snug text-champagne">
-                      {CARTE_PAR_CLE[a.carte]?.texte ?? a.carte}
-                    </p>
-                    <p className="mt-1 text-[11px] text-brume">
-                      Vous : {ETIQUETTE[a.ma_reponse]} · {partenaire} : {ETIQUETTE[a.sa_reponse]}
-                    </p>
-                  </div>
+                  <AccordCarte key={a.carte} accord={a} details />
                 ))}
               </div>
             </section>
