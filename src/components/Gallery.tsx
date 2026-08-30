@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { compresserImage, poidsLisible } from "@/lib/compression";
+import StickerVideo from "@/components/StickerVideo";
 
 type Item = {
   id: string;
@@ -219,6 +220,104 @@ export default function Gallery({
     }
     setOccupe(false);
     armerMinuterie();
+  }
+
+  /* ------------------------------------------------ Stickers */
+  const [stickerEtat, setStickerEtat] = useState<"" | "travail" | "fait">("");
+  const [videoPourSticker, setVideoPourSticker] = useState<File | null>(null);
+
+  /** Enregistre une image (déjà carrée) dans la bibliothèque de stickers.
+      ⚠ Les stickers vivent HORS du coffre : visibles sans le code. */
+  const enregistrerSticker = useCallback(
+    async (image: Blob) => {
+      const ext = image.type.includes("webp") ? "webp" : "png";
+      const chemin = `${coupleId}/stickers/${userId}-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage
+        .from("intimate")
+        .upload(chemin, image, { contentType: image.type || "image/png", upsert: false });
+      if (!error) {
+        await supabase
+          .from("stickers")
+          .insert({ couple_id: coupleId, storage_path: chemin, added_by: userId });
+      }
+      return !error;
+    },
+    [supabase, coupleId, userId]
+  );
+
+  /** Depuis la visionneuse : photo → recadrage carré direct ; vidéo →
+      cadreur pour choisir l'instant. On télécharge le fichier plutôt que
+      d'utiliser l'URL signée : un canvas refuse de dessiner une image
+      d'une autre origine. */
+  async function fabriquerSticker(item: Item) {
+    if (stickerEtat === "travail") return;
+    setStickerEtat("travail");
+    const { data: blob, error } = await supabase.storage
+      .from("intimate")
+      .download(item.storage_path);
+    if (error || !blob) {
+      setStickerEtat("");
+      setErreur(error?.message ?? "Téléchargement impossible");
+      return;
+    }
+
+    if (item.kind === "video") {
+      setVideoPourSticker(new File([blob], "galerie.mp4", { type: blob.type || "video/mp4" }));
+      setStickerEtat("");
+      return;
+    }
+
+    // Photo : recadrage carré centré, 512 px.
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const cote = Math.min(img.naturalWidth, img.naturalHeight);
+      const taille = Math.min(512, cote);
+      const canvas = document.createElement("canvas");
+      canvas.width = taille;
+      canvas.height = taille;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        setStickerEtat("");
+        return;
+      }
+      ctx.drawImage(
+        img,
+        (img.naturalWidth - cote) / 2,
+        (img.naturalHeight - cote) / 2,
+        cote,
+        cote,
+        0,
+        0,
+        taille,
+        taille
+      );
+      URL.revokeObjectURL(url);
+      canvas.toBlob(
+        async (sortie) => {
+          const ok = sortie ? await enregistrerSticker(sortie) : false;
+          setStickerEtat(ok ? "fait" : "");
+          if (ok) setTimeout(() => setStickerEtat(""), 2500);
+        },
+        "image/webp",
+        0.85
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      setStickerEtat("");
+    };
+    img.src = url;
+  }
+
+  /** L'instant capturé dans une vidéo de la galerie devient un sticker. */
+  async function capturerStickerVideo(image: Blob) {
+    setVideoPourSticker(null);
+    setStickerEtat("travail");
+    const ok = await enregistrerSticker(image);
+    setStickerEtat(ok ? "fait" : "");
+    if (ok) setTimeout(() => setStickerEtat(""), 2500);
   }
 
   /* ------------------------------------------------ Commentaires */
@@ -572,6 +671,13 @@ export default function Gallery({
               🔥 Coup de cœur
             </button>
             <button
+              onClick={() => fabriquerSticker(ouvre)}
+              disabled={stickerEtat === "travail"}
+              className="rounded-xl border border-bord px-4 py-2 text-sm text-brume transition hover:border-bordeaux-vif"
+            >
+              {stickerEtat === "travail" ? "…" : stickerEtat === "fait" ? "✓ Sticker créé" : "🏷️ Sticker"}
+            </button>
+            <button
               onClick={() => supprimer(ouvre)}
               disabled={occupe}
               className="rounded-xl border border-bord px-4 py-2 text-sm text-brume transition hover:border-bordeaux-vif"
@@ -580,6 +686,14 @@ export default function Gallery({
             </button>
           </div>
         </div>
+      )}
+
+      {videoPourSticker && (
+        <StickerVideo
+          fichier={videoPourSticker}
+          onCapture={capturerStickerVideo}
+          onFermer={() => setVideoPourSticker(null)}
+        />
       )}
     </div>
   );
