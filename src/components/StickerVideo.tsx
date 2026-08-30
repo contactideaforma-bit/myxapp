@@ -23,13 +23,44 @@ export default function StickerVideo({
   const [duree, setDuree] = useState(0);
   const [position, setPosition] = useState(0);
   const [occupe, setOccupe] = useState(false);
+  /* Un seul seek à la fois : pendant que la vidéo cherche, on mémorise la
+     dernière cible et on l'applique dès que « seeked » tombe. C'est ce qui
+     supprime les à-coups quand on frotte le curseur. */
+  const seekOccupeRef = useRef(false);
+  const cibleRef = useRef<number | null>(null);
 
   useEffect(() => () => URL.revokeObjectURL(urlLocale), [urlLocale]);
+
+  function poserTemps(v: HTMLVideoElement, t: number) {
+    try {
+      if (typeof v.fastSeek === "function") v.fastSeek(t);
+      else v.currentTime = t;
+    } catch {
+      v.currentTime = t;
+    }
+  }
 
   function chercher(t: number) {
     setPosition(t);
     const v = videoRef.current;
-    if (v) v.currentTime = t;
+    if (!v) return;
+    if (seekOccupeRef.current) {
+      cibleRef.current = t;
+      return;
+    }
+    seekOccupeRef.current = true;
+    poserTemps(v, t);
+  }
+
+  function surSeeked() {
+    const v = videoRef.current;
+    seekOccupeRef.current = false;
+    if (v && cibleRef.current !== null) {
+      const t = cibleRef.current;
+      cibleRef.current = null;
+      seekOccupeRef.current = true;
+      poserTemps(v, t);
+    }
   }
 
   function capturer() {
@@ -60,8 +91,16 @@ export default function StickerVideo({
     );
     canvas.toBlob(
       (blob) => {
-        setOccupe(false);
-        if (blob) onCapture(blob);
+        if (blob) {
+          setOccupe(false);
+          onCapture(blob);
+        } else {
+          // webp non supporté (vieux Safari) : on retombe sur png.
+          canvas.toBlob((png) => {
+            setOccupe(false);
+            if (png) onCapture(png);
+          }, "image/png");
+        }
       },
       "image/webp",
       0.85
@@ -90,6 +129,7 @@ export default function StickerVideo({
             setDuree(e.currentTarget.duration || 0);
             chercher(0.1);
           }}
+          onSeeked={surSeeked}
           className="max-h-[45dvh] w-full rounded-2xl border border-bord bg-black object-contain"
         />
         <div className="mt-3 flex items-center gap-3">

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import Chargeur from "@/components/Chargeur";
 import { DE_ACTIONS, DE_ENDROITS, MINUTEURS } from "@/data/des";
 import ReactionCoup from "@/components/ReactionCoup";
 
@@ -278,7 +279,7 @@ export default function DesCoquins({
   const dernierParMoi = etat?.par === userId;
 
   if (charge) {
-    return <p className="py-20 text-center text-sm text-brume">…</p>;
+    return <Chargeur />;
   }
 
   /* ================================================ RENDU */

@@ -113,6 +113,7 @@ export default function ChatRoom({
   const [actionSur, setActionSur] = useState<Message | null>(null);
   const [confirmerVidage, setConfirmerVidage] = useState(false);
   const [pickerOuvert, setPickerOuvert] = useState(false);
+  const [pickerOnglet, setPickerOnglet] = useState<"giphy" | "nous">("nous");
   const [enDirect, setEnDirect] = useState(false);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [repondA, setRepondA] = useState<Message | null>(null);
@@ -1177,26 +1178,38 @@ export default function ChatRoom({
           >
             <div className="poignee" />
 
-            <div className="mb-5 grid grid-cols-2 gap-2">
+            <div className="mb-5 grid grid-cols-3 gap-2">
               <button
-                className="carte flex items-center gap-3 p-4 text-left"
+                className="carte flex flex-col items-center gap-1.5 p-3 text-center"
                 onClick={() => {
                   setOptionsOuvertes(false);
                   fichierRef.current?.click();
                 }}
               >
                 <span className="text-xl">🖼️</span>
-                <span className="text-sm">Photo</span>
+                <span className="text-xs leading-tight">Photo / vidéo</span>
               </button>
               <button
-                className="carte flex items-center gap-3 p-4 text-left"
+                className="carte flex flex-col items-center gap-1.5 p-3 text-center"
                 onClick={() => {
                   setOptionsOuvertes(false);
+                  setPickerOnglet("nous");
+                  setPickerOuvert(true);
+                }}
+              >
+                <span className="text-xl">🏷️</span>
+                <span className="text-xs leading-tight">Nos stickers</span>
+              </button>
+              <button
+                className="carte flex flex-col items-center gap-1.5 p-3 text-center"
+                onClick={() => {
+                  setOptionsOuvertes(false);
+                  setPickerOnglet("giphy");
                   setPickerOuvert(true);
                 }}
               >
                 <span className="text-xl">🎞️</span>
-                <span className="text-sm">GIF</span>
+                <span className="text-xs leading-tight">GIF</span>
               </button>
             </div>
 
@@ -1245,6 +1258,7 @@ export default function ChatRoom({
 
       {pickerOuvert && (
         <GifPicker
+          ongletInitial={pickerOnglet}
           coupleId={coupleId}
           userId={userId}
           onGiphy={envoyerGiphy}

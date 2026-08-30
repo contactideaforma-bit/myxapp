@@ -7,29 +7,40 @@ import StickerVideo from "@/components/StickerVideo";
 type Gif = { id: string; apercu: string; complet: string; titre: string };
 type Sticker = { id: string; storage_path: string; legende: string | null };
 
+/** Cache de séance : rouvrir le tiroir affiche les stickers immédiatement,
+    le réseau ne sert plus qu'à rafraîchir en arrière-plan. */
+let cacheStickers: { coupleId: string; liste: Sticker[]; urls: Record<string, string> } | null = null;
+
 export default function GifPicker({
   coupleId,
   userId,
+  ongletInitial = "giphy",
   onGiphy,
   onSticker,
   onFermer,
 }: {
   coupleId: string;
   userId: string;
+  ongletInitial?: "giphy" | "nous";
   onGiphy: (url: string) => void;
   onSticker: (chemin: string) => void;
   onFermer: () => void;
 }) {
   const [supabase] = useState(() => createClient());
-  const [onglet, setOnglet] = useState<"giphy" | "nous">("giphy");
+  const [onglet, setOnglet] = useState<"giphy" | "nous">(ongletInitial);
 
   const [q, setQ] = useState("");
   const [gifs, setGifs] = useState<Gif[]>([]);
   const [charge, setCharge] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
 
-  const [stickers, setStickers] = useState<Sticker[]>([]);
-  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [stickers, setStickers] = useState<Sticker[]>(() =>
+    cacheStickers?.coupleId === coupleId ? cacheStickers.liste : []
+  );
+  const [urls, setUrls] = useState<Record<string, string>>(() =>
+    cacheStickers?.coupleId === coupleId ? cacheStickers.urls : {}
+  );
+  const [confirmeId, setConfirmeId] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const fichierRef = useRef<HTMLInputElement>(null);
   /** Vidéo en attente de capture : on en tirera un sticker. */
@@ -70,16 +81,17 @@ export default function GifPicker({
     const liste = (data ?? []) as Sticker[];
     setStickers(liste);
 
+    const u: Record<string, string> = {};
     if (liste.length) {
       const { data: sg } = await supabase.storage
         .from("intimate")
         .createSignedUrls(liste.map((s) => s.storage_path), 3600);
-      const u: Record<string, string> = {};
       (sg ?? []).forEach((x) => {
         if (x.signedUrl && x.path) u[x.path] = x.signedUrl;
       });
       setUrls(u);
     }
+    cacheStickers = { coupleId, liste, urls: u };
   }, [supabase, coupleId]);
 
   useEffect(() => {
@@ -127,9 +139,24 @@ export default function GifPicker({
   }
 
   async function retirer(s: Sticker) {
-    setStickers((p) => p.filter((x) => x.id !== s.id));
+    setConfirmeId(null);
+    setStickers((p) => {
+      const suite = p.filter((x) => x.id !== s.id);
+      if (cacheStickers?.coupleId === coupleId) cacheStickers = { ...cacheStickers, liste: suite };
+      return suite;
+    });
     await supabase.storage.from("intimate").remove([s.storage_path]);
     await supabase.from("stickers").delete().eq("id", s.id);
+  }
+
+  /** Premier ✕ = armer (2,5 s), second = supprimer. Évite les doigts qui glissent. */
+  function demanderRetrait(s: Sticker) {
+    if (confirmeId === s.id) {
+      retirer(s);
+      return;
+    }
+    setConfirmeId(s.id);
+    setTimeout(() => setConfirmeId((c) => (c === s.id ? null : c)), 2500);
   }
 
   return (
@@ -238,10 +265,16 @@ export default function GifPicker({
                       )}
                     </button>
                     <button
-                      onClick={() => retirer(s)}
-                      className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full border border-bord bg-nuit text-[10px] text-brume"
+                      onClick={() => demanderRetrait(s)}
+                      className="absolute -right-1 -top-1 grid h-6 w-6 place-items-center rounded-full border text-[11px] transition"
+                      style={
+                        confirmeId === s.id
+                          ? { background: "var(--color-bordeaux-vif)", borderColor: "var(--color-bordeaux-vif)", color: "#fff" }
+                          : { background: "var(--color-nuit)", borderColor: "var(--color-bord)", color: "var(--color-brume)" }
+                      }
+                      aria-label={confirmeId === s.id ? "Confirmer la suppression" : "Supprimer ce sticker"}
                     >
-                      ×
+                      {confirmeId === s.id ? "✓" : "×"}
                     </button>
                   </div>
                 ))}

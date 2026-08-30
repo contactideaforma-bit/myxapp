@@ -528,7 +528,7 @@ export default function Journal({
   if (ouvert === null) {
     return (
       <div className="journal grid place-items-center">
-        <p className="text-sm" style={{ color: "var(--encre-3)", animation: "pulse-doux 1.6s infinite" }}>…</p>
+        <span className="coeur-chargeur" role="status" aria-label="Chargement">🖤</span>
       </div>
     );
   }

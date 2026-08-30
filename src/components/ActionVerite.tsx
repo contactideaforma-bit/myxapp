@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import Chargeur from "@/components/Chargeur";
 import { ACTIONS, VERITES, CARTE_AV_PAR_CLE } from "@/data/actionverite";
 import ReactionCoup from "@/components/ReactionCoup";
 
@@ -210,7 +211,7 @@ export default function ActionVerite({
   const carte = etat?.carte ? CARTE_AV_PAR_CLE[etat.carte] : null;
 
   if (charge) {
-    return <p className="py-20 text-center text-sm text-brume">…</p>;
+    return <Chargeur />;
   }
 
   /* ================================================ RENDU */

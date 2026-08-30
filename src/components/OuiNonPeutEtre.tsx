@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import Chargeur from "@/components/Chargeur";
 import { CARTES_ONP, CARTE_PAR_CLE, INTENSITES_ONP, type IntensiteONP } from "@/data/ouinon";
 import ReactionCoup from "@/components/ReactionCoup";
 
@@ -254,7 +255,7 @@ export default function OuiNonPeutEtre({
   };
 
   if (charge) {
-    return <p className="py-20 text-center text-sm text-brume">…</p>;
+    return <Chargeur />;
   }
 
   /* ================================================ RENDU */

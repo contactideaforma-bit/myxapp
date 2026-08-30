@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import Chargeur from "@/components/Chargeur";
 import { CATEGORIES_QUIZ, QUESTIONS_QUIZ, QUESTION_PAR_CLE } from "@/data/quiz";
 import ReactionCoup from "@/components/ReactionCoup";
 
@@ -188,7 +189,7 @@ export default function TuMeConnais({
     QUESTION_PAR_CLE[question]?.options.find((o) => o.cle === cle)?.texte ?? "?";
 
   if (charge) {
-    return <p className="py-20 text-center text-sm text-brume">…</p>;
+    return <Chargeur />;
   }
 
   /* ================================================ RENDU */

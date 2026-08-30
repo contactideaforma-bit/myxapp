@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import Chargeur from "@/components/Chargeur";
 import { THEMES, TOUS_LES_DEFIS } from "@/data/challenges";
 import ReactionCoup from "@/components/ReactionCoup";
 
@@ -197,7 +198,7 @@ export default function Games({
 
   /* ================================================ RENDU */
   if (charge) {
-    return <p className="py-20 text-center text-sm text-brume">…</p>;
+    return <Chargeur />;
   }
 
   const theme = THEMES.find((t) => t.key === etat?.theme);

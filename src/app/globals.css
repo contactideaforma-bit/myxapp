@@ -502,3 +502,19 @@ button, [role="button"] {
     overscroll-behavior: contain;
   }
 }
+
+/* =====================================================================
+   CHARGEUR — un cœur noir, à l'envers, qui bat.
+   ===================================================================== */
+.coeur-chargeur {
+  display: inline-block;
+  font-size: 2.2rem;
+  line-height: 1;
+  transform: rotate(180deg);
+  animation: coeur-bat 1.1s ease-in-out infinite;
+  filter: drop-shadow(0 8px 20px rgba(196, 53, 99, 0.3));
+}
+@keyframes coeur-bat {
+  0%, 100% { transform: rotate(180deg) scale(1); opacity: 0.7; }
+  50% { transform: rotate(180deg) scale(1.22); opacity: 1; }
+}
