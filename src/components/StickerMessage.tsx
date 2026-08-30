@@ -47,7 +47,7 @@ export default function StickerMessage({ message }: { message: Message }) {
       loop
       playsInline
       onContextMenu={(e) => e.preventDefault()}
-      className="h-36 w-36 rounded-2xl object-cover"
+      className="max-h-48 w-auto max-w-[12rem] rounded-2xl"
     />
   ) : (
     // eslint-disable-next-line @next/next/no-img-element
@@ -56,7 +56,7 @@ export default function StickerMessage({ message }: { message: Message }) {
       alt=""
       draggable={false}
       onContextMenu={(e) => e.preventDefault()}
-      className="h-36 w-36 rounded-2xl object-contain"
+      className="max-h-48 w-auto max-w-[12rem] rounded-2xl object-contain"
     />
   );
 }

@@ -273,32 +273,21 @@ export default function Gallery({
       return;
     }
 
-    // Photo : recadrage carré centré, 512 px.
+    // Photo : l'image ENTIÈRE, jamais coupée — juste ramenée à 512 px max.
     const url = URL.createObjectURL(blob);
     const img = new Image();
     img.onload = () => {
-      const cote = Math.min(img.naturalWidth, img.naturalHeight);
-      const taille = Math.min(512, cote);
+      const echelle = Math.min(1, 512 / Math.max(img.naturalWidth, img.naturalHeight));
       const canvas = document.createElement("canvas");
-      canvas.width = taille;
-      canvas.height = taille;
+      canvas.width = Math.max(2, Math.round(img.naturalWidth * echelle));
+      canvas.height = Math.max(2, Math.round(img.naturalHeight * echelle));
       const ctx = canvas.getContext("2d");
       if (!ctx) {
         URL.revokeObjectURL(url);
         setStickerEtat("");
         return;
       }
-      ctx.drawImage(
-        img,
-        (img.naturalWidth - cote) / 2,
-        (img.naturalHeight - cote) / 2,
-        cote,
-        cote,
-        0,
-        0,
-        taille,
-        taille
-      );
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
       canvas.toBlob(
         async (sortie) => {
