@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Message, Profile, Reaction } from "@/lib/types";
 import ImageMessage from "./ImageMessage";
+import VideoMessage from "@/components/VideoMessage";
 import PanicOverlay from "./PanicOverlay";
 import GifPicker from "./GifPicker";
 import AudioBubble from "./AudioBubble";
@@ -19,6 +20,69 @@ const DUREES = [
   { label: "10 min", valeur: 600 },
   { label: "1 h", valeur: 3600 },
 ];
+
+/* =====================================================================
+   LIENS DANS LES TEXTES — les URL deviennent cliquables, et le premier
+   lien vidéo (YouTube ou fichier direct) gagne un aperçu sous le texte.
+   ===================================================================== */
+const REGEX_LIEN = /(https?:\/\/[^\s<>"']+)/g;
+
+const idYoutube = (url: string): string | null => {
+  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/);
+  return m ? m[1] : null;
+};
+
+const estVideoDirecte = (url: string) => /\.(mp4|webm|mov|m4v)([?#]|$)/i.test(url);
+
+function TexteEnrichi({ texte }: { texte: string }) {
+  const bouts = texte.split(REGEX_LIEN);
+  const premierLien = texte.match(REGEX_LIEN)?.[0] ?? null;
+  const yt = premierLien ? idYoutube(premierLien) : null;
+  const directe = premierLien && !yt && estVideoDirecte(premierLien) ? premierLien : null;
+
+  return (
+    <>
+      {bouts.map((b, i) =>
+        /^https?:\/\//.test(b) ? (
+          <a
+            key={i}
+            href={b}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 [overflow-wrap:anywhere]"
+          >
+            {b}
+          </a>
+        ) : (
+          <span key={i}>{b}</span>
+        )
+      )}
+      {yt && premierLien && (
+        <a
+          href={premierLien}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="relative mt-2 block w-56 overflow-hidden rounded-xl border border-bord"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`https://img.youtube.com/vi/${yt}/hqdefault.jpg`} alt="" className="w-full" loading="lazy" />
+          <span className="absolute inset-0 grid place-items-center">
+            <span className="grid h-11 w-11 place-items-center rounded-full bg-black/60 pl-0.5 text-lg text-white">▶</span>
+          </span>
+        </a>
+      )}
+      {directe && (
+        <video
+          src={directe}
+          controls
+          playsInline
+          preload="metadata"
+          className="mt-2 block w-56 rounded-xl border border-bord bg-black"
+        />
+      )}
+    </>
+  );
+}
 
 export default function ChatRoom({
   coupleId,
@@ -42,6 +106,7 @@ export default function ChatRoom({
   const [vueUnique, setVueUnique] = useState(false);
   const [partenaireEcrit, setPartenaireEcrit] = useState(false);
   const [envoi, setEnvoi] = useState(false);
+  const [erreurMedia, setErreurMedia] = useState<string | null>(null);
   const [discret, setDiscret] = useState(false);
   const [maintenant, setMaintenant] = useState(() => Date.now());
 
@@ -322,7 +387,7 @@ export default function ChatRoom({
   );
 
   const apercuDe = (m?: Message | null) =>
-    !m ? "" : m.kind === "image" ? "📷 Photo" : m.kind === "gif" ? "GIF" : m.body ?? "";
+    !m ? "" : m.kind === "image" ? "📷 Photo" : m.kind === "video" ? "🎥 Vidéo" : m.kind === "gif" ? "GIF" : m.body ?? "";
 
   /** Petite vibration : Android la rend, iOS l'ignore sans erreur. */
   function vibrer(duree = 8) {
@@ -473,6 +538,50 @@ export default function ChatRoom({
       }
     }
     setEnvoi(false);
+  }
+
+  /** Vidéo « extérieure » (téléphone, fichiers…) : envoyée telle quelle,
+      le navigateur ne sait pas la compresser. 100 Mo max, comme la galerie. */
+  async function envoyerVideo(brut: File) {
+    if (!brut.type.startsWith("video/")) return;
+    if (brut.size > 100 * 1024 * 1024) {
+      prevenirEnvoiTropLourd(brut.size);
+      return;
+    }
+    setEnvoi(true);
+    const ext = brut.name.split(".").pop()?.toLowerCase() || "mp4";
+    const chemin = `${coupleId}/${userId}-${Date.now()}.${ext}`;
+
+    const { error: errUp } = await supabase.storage
+      .from("intimate")
+      .upload(chemin, brut, { contentType: brut.type || "video/mp4", cacheControl: "0", upsert: false });
+
+    if (!errUp) {
+      const { data } = await supabase
+        .from("messages")
+        .insert({
+          couple_id: coupleId,
+          sender_id: userId,
+          kind: "video",
+          storage_path: chemin,
+          expires_at: calculerExpiration(),
+        })
+        .select()
+        .single();
+      if (data) {
+        setMessages((prev) =>
+          prev.some((x) => x.id === data.id) ? prev : [...prev, data as Message]
+        );
+        prevenir("video");
+      }
+    }
+    setEnvoi(false);
+  }
+
+  function prevenirEnvoiTropLourd(octets: number) {
+    const mo = Math.round(octets / 1024 / 1024);
+    setErreurMedia(`Vidéo trop lourde (${mo} Mo) — 100 Mo maximum. Filmez plus court ou réduisez la qualité.`);
+    setTimeout(() => setErreurMedia(null), 6000);
   }
 
   async function envoyerGiphy(url: string) {
@@ -645,7 +754,7 @@ export default function ChatRoom({
   async function supprimer(m: Message) {
     setActionSur(null);
     setMessages((prev) => prev.filter((x) => x.id !== m.id));
-    if (m.kind === "image" && m.storage_path) {
+    if ((m.kind === "image" || m.kind === "video") && m.storage_path) {
       await supabase.storage.from("intimate").remove([m.storage_path]);
     }
     await supabase.from("messages").delete().eq("id", m.id);
@@ -654,7 +763,7 @@ export default function ChatRoom({
   async function viderConversation() {
     setConfirmerVidage(false);
     const chemins = messages
-      .filter((m) => m.kind === "image" && m.storage_path)
+      .filter((m) => (m.kind === "image" || m.kind === "video") && m.storage_path)
       .map((m) => m.storage_path as string);
     setMessages([]);
     if (chemins.length) await supabase.storage.from("intimate").remove(chemins);
@@ -785,6 +894,8 @@ export default function ChatRoom({
                   />
                 ) : m.kind === "image" ? (
                   <ImageMessage message={m} estMoi={estMoi} onOuvrir={marquerOuverte} />
+                ) : m.kind === "video" ? (
+                  <VideoMessage message={m} />
                 ) : (
                   <div
                     className={`w-fit whitespace-pre-wrap rounded-bulle px-4 py-2.5 text-[15px] leading-relaxed [overflow-wrap:anywhere] ${
@@ -793,7 +904,7 @@ export default function ChatRoom({
                         : "border border-bord bg-velours-clair text-champagne"
                     }`}
                   >
-                    {m.body}
+                    <TexteEnrichi texte={m.body ?? ""} />
                   </div>
                 )}
               </div>
@@ -844,6 +955,11 @@ export default function ChatRoom({
 
       {/* COMPOSITEUR */}
       <footer className="shrink-0 border-t border-bord bg-velours/90 px-3 py-3 backdrop-blur">
+        {erreurMedia && (
+          <p className="anim-monte mb-2 rounded-xl border border-bordeaux bg-bordeaux/15 px-4 py-2 text-xs text-orrose">
+            {erreurMedia}
+          </p>
+        )}
         {enregistrement && (
           <div className="anim-monte mb-2 flex items-center gap-3 rounded-xl border border-bordeaux-vif bg-bordeaux/25 px-4 py-2.5">
             <span
@@ -894,11 +1010,11 @@ export default function ChatRoom({
           <input
             ref={fichierRef}
             type="file"
-            accept="image/*"
+            accept="image/*,video/*"
             hidden
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) envoyerImage(f);
+              if (f) f.type.startsWith("video/") ? envoyerVideo(f) : envoyerImage(f);
               e.target.value = "";
             }}
           />
@@ -1024,7 +1140,9 @@ export default function ChatRoom({
                           ? "🎙 Message vocal"
                           : m.kind === "gif"
                             ? "GIF"
-                            : "📷 Photo"}
+                            : m.kind === "video"
+                              ? "🎥 Vidéo"
+                              : "📷 Photo"}
                     </p>
                     <p className="mt-1.5 flex items-center gap-2 text-[10px] text-brume">
                       <span>{m.sender_id === userId ? "Vous" : partner.display_name}</span>

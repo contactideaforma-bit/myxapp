@@ -428,7 +428,9 @@ export default function Gallery({
                 item.kind === "video" ? (
                   <>
                     <video
-                      src={urls[item.storage_path]}
+                      /* #t=0.1 force le navigateur (iOS surtout) à peindre
+                         la première image — sinon la tuile reste noire. */
+                      src={`${urls[item.storage_path]}#t=0.1`}
                       className="h-full w-full object-cover"
                       muted
                       playsInline

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import StickerVideo from "@/components/StickerVideo";
 
 type Gif = { id: string; apercu: string; complet: string; titre: string };
 type Sticker = { id: string; storage_path: string; legende: string | null };
@@ -31,6 +32,8 @@ export default function GifPicker({
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [envoi, setEnvoi] = useState(false);
   const fichierRef = useRef<HTMLInputElement>(null);
+  /** Vidéo en attente de capture : on en tirera un sticker. */
+  const [videoAScanner, setVideoAScanner] = useState<File | null>(null);
 
   /* -------------------------------------------------- Giphy */
   const chercher = useCallback(
@@ -84,6 +87,11 @@ export default function GifPicker({
   }, [onglet, chargerStickers]);
 
   async function ajouter(fichier: File) {
+    // Une vidéo ? On ouvre le cadreur : l'instant choisi deviendra un sticker.
+    if (fichier.type.startsWith("video/")) {
+      setVideoAScanner(fichier);
+      return;
+    }
     if (!fichier.type.startsWith("image/")) return;
     setEnvoi(true);
     const ext = (fichier.name.split(".").pop() || "gif").toLowerCase();
@@ -91,6 +99,24 @@ export default function GifPicker({
     const { error } = await supabase.storage
       .from("intimate")
       .upload(chemin, fichier, { upsert: false });
+    if (!error) {
+      await supabase
+        .from("stickers")
+        .insert({ couple_id: coupleId, storage_path: chemin, added_by: userId });
+      await chargerStickers();
+    }
+    setEnvoi(false);
+  }
+
+  /** L'image capturée dans la vidéo entre dans la bibliothèque. */
+  async function ajouterCapture(image: Blob) {
+    setVideoAScanner(null);
+    setEnvoi(true);
+    const ext = image.type.includes("webp") ? "webp" : "png";
+    const chemin = `${coupleId}/stickers/${userId}-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage
+      .from("intimate")
+      .upload(chemin, image, { contentType: image.type || "image/png", upsert: false });
     if (!error) {
       await supabase
         .from("stickers")
@@ -171,7 +197,7 @@ export default function GifPicker({
               <input
                 ref={fichierRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,video/*"
                 hidden
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -184,7 +210,7 @@ export default function GifPicker({
                 disabled={envoi}
                 onClick={() => fichierRef.current?.click()}
               >
-                {envoi ? "Envoi…" : "+ Ajouter à notre bibliothèque"}
+                {envoi ? "Envoi…" : "+ Ajouter — image ou vidéo"}
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
@@ -222,6 +248,14 @@ export default function GifPicker({
               </div>
             </div>
           </>
+        )}
+
+        {videoAScanner && (
+          <StickerVideo
+            fichier={videoAScanner}
+            onCapture={ajouterCapture}
+            onFermer={() => setVideoAScanner(null)}
+          />
         )}
       </div>
     </div>

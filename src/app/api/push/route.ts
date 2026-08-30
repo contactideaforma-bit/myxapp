@@ -52,6 +52,7 @@ export async function POST(request: Request) {
   const libelle: Record<string, string> = {
     message: "Nouveau message",
     photo: "Une photo vous attend",
+    video: "Une vidéo vous attend",
     gif: "Nouveau message",
     idee: "Une nouvelle idée",
     humeur: "Quelqu'un pense à vous",
