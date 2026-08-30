@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import StickerVideo from "@/components/StickerVideo";
 
+const estClip = (chemin: string) => /\.(webm|mp4|mov)$/i.test(chemin);
+
 type Gif = { id: string; apercu: string; complet: string; titre: string };
 type Sticker = { id: string; storage_path: string; legende: string | null };
 
@@ -124,7 +126,13 @@ export default function GifPicker({
   async function ajouterCapture(image: Blob) {
     setVideoAScanner(null);
     setEnvoi(true);
-    const ext = image.type.includes("webp") ? "webp" : "png";
+    const ext = image.type.includes("webm")
+      ? "webm"
+      : image.type.includes("mp4")
+        ? "mp4"
+        : image.type.includes("webp")
+          ? "webp"
+          : "png";
     const chemin = `${coupleId}/stickers/${userId}-${Date.now()}.${ext}`;
     const { error } = await supabase.storage
       .from("intimate")
@@ -255,14 +263,24 @@ export default function GifPicker({
                       onClick={() => onSticker(s.storage_path)}
                       className="block aspect-square w-full overflow-hidden rounded-xl border border-bord bg-velours-clair"
                     >
-                      {urls[s.storage_path] && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={urls[s.storage_path]}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      )}
+                      {urls[s.storage_path] &&
+                        (estClip(s.storage_path) ? (
+                          <video
+                            src={urls[s.storage_path]}
+                            autoPlay
+                            muted
+                            loop
+                            playsInline
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={urls[s.storage_path]}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ))}
                     </button>
                     <button
                       onClick={() => demanderRetrait(s)}

@@ -13,7 +13,7 @@ export type Message = {
   id: string;
   couple_id: string;
   sender_id: string;
-  kind: "text" | "image" | "gif" | "audio" | "video";
+  kind: "text" | "image" | "gif" | "audio" | "video" | "sticker";
   body: string | null;
   storage_path: string | null;
   view_once: boolean;

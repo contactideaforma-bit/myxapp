@@ -4,7 +4,7 @@ export default function Chargement() {
   return (
     <AppShell plein>
       <div className="journal grid place-items-center" style={{ minHeight: "100%" }}>
-        <span className="coeur-chargeur" role="status" aria-label="Chargement">🖤</span>
+        <span className="coeur-halo"><span className="coeur-chargeur" role="status" aria-label="Chargement">🖤</span></span>
       </div>
     </AppShell>
   );

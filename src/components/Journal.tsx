@@ -528,7 +528,7 @@ export default function Journal({
   if (ouvert === null) {
     return (
       <div className="journal grid place-items-center">
-        <span className="coeur-chargeur" role="status" aria-label="Chargement">🖤</span>
+        <span className="coeur-halo"><span className="coeur-chargeur" role="status" aria-label="Chargement">🖤</span></span>
       </div>
     );
   }

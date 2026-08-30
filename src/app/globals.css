@@ -506,13 +506,38 @@ button, [role="button"] {
 /* =====================================================================
    CHARGEUR — un cœur noir, à l'envers, qui bat.
    ===================================================================== */
+.coeur-halo {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 10rem;
+  height: 10rem;
+}
+.coeur-halo::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 77, 141, 0.28),
+    rgba(196, 53, 99, 0.12) 45%,
+    transparent 72%
+  );
+  animation: halo-rose 1.1s ease-in-out infinite;
+}
+@keyframes halo-rose {
+  0%, 100% { transform: scale(0.82); opacity: 0.55; }
+  50% { transform: scale(1.18); opacity: 1; }
+}
 .coeur-chargeur {
+  position: relative;
   display: inline-block;
-  font-size: 2.2rem;
+  font-size: 2.4rem;
   line-height: 1;
   transform: rotate(180deg);
   animation: coeur-bat 1.1s ease-in-out infinite;
-  filter: drop-shadow(0 8px 20px rgba(196, 53, 99, 0.3));
+  filter: drop-shadow(0 8px 20px rgba(196, 53, 99, 0.35));
 }
 @keyframes coeur-bat {
   0%, 100% { transform: rotate(180deg) scale(1); opacity: 0.7; }

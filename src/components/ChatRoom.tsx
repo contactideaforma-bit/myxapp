@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Message, Profile, Reaction } from "@/lib/types";
 import ImageMessage from "./ImageMessage";
 import VideoMessage from "@/components/VideoMessage";
+import StickerMessage from "@/components/StickerMessage";
 import PanicOverlay from "./PanicOverlay";
 import GifPicker from "./GifPicker";
 import AudioBubble from "./AudioBubble";
@@ -388,7 +389,7 @@ export default function ChatRoom({
   );
 
   const apercuDe = (m?: Message | null) =>
-    !m ? "" : m.kind === "image" ? "📷 Photo" : m.kind === "video" ? "🎥 Vidéo" : m.kind === "gif" ? "GIF" : m.body ?? "";
+    !m ? "" : m.kind === "image" ? "📷 Photo" : m.kind === "video" ? "🎥 Vidéo" : m.kind === "sticker" ? "🏷️ Sticker" : m.kind === "gif" ? "GIF" : m.body ?? "";
 
   /** Petite vibration : Android la rend, iOS l'ignore sans erreur. */
   function vibrer(duree = 8) {
@@ -608,12 +609,14 @@ export default function ChatRoom({
 
   async function envoyerSticker(chemin: string) {
     setPickerOuvert(false);
+    // kind 'sticker' : affichage automatique, et supprimer le message ne
+    // touche pas au fichier — il appartient à la bibliothèque partagée.
     const { data } = await supabase
       .from("messages")
       .insert({
         couple_id: coupleId,
         sender_id: userId,
-        kind: "image",
+        kind: "sticker",
         storage_path: chemin,
         expires_at: calculerExpiration(),
       })
@@ -623,7 +626,7 @@ export default function ChatRoom({
       setMessages((prev) =>
         prev.some((x) => x.id === data.id) ? prev : [...prev, data as Message]
       );
-      prevenir("photo");
+      prevenir("sticker");
     }
   }
 
@@ -897,6 +900,8 @@ export default function ChatRoom({
                   <ImageMessage message={m} estMoi={estMoi} onOuvrir={marquerOuverte} />
                 ) : m.kind === "video" ? (
                   <VideoMessage message={m} />
+                ) : m.kind === "sticker" ? (
+                  <StickerMessage message={m} />
                 ) : (
                   <div
                     className={`w-fit whitespace-pre-wrap rounded-bulle px-4 py-2.5 text-[15px] leading-relaxed [overflow-wrap:anywhere] ${
@@ -1143,7 +1148,9 @@ export default function ChatRoom({
                             ? "GIF"
                             : m.kind === "video"
                               ? "🎥 Vidéo"
-                              : "📷 Photo"}
+                              : m.kind === "sticker"
+                                ? "🏷️ Sticker"
+                                : "📷 Photo"}
                     </p>
                     <p className="mt-1.5 flex items-center gap-2 text-[10px] text-brume">
                       <span>{m.sender_id === userId ? "Vous" : partner.display_name}</span>

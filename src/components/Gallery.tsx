@@ -230,7 +230,13 @@ export default function Gallery({
       ⚠ Les stickers vivent HORS du coffre : visibles sans le code. */
   const enregistrerSticker = useCallback(
     async (image: Blob) => {
-      const ext = image.type.includes("webp") ? "webp" : "png";
+      const ext = image.type.includes("webm")
+        ? "webm"
+        : image.type.includes("mp4")
+          ? "mp4"
+          : image.type.includes("webp")
+            ? "webp"
+            : "png";
       const chemin = `${coupleId}/stickers/${userId}-${Date.now()}.${ext}`;
       const { error } = await supabase.storage
         .from("intimate")

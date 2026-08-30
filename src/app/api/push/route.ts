@@ -53,6 +53,7 @@ export async function POST(request: Request) {
     message: "Nouveau message",
     photo: "Une photo vous attend",
     video: "Une vidéo vous attend",
+    sticker: "Un petit quelque chose pour vous",
     gif: "Nouveau message",
     idee: "Une nouvelle idée",
     humeur: "Quelqu'un pense à vous",
