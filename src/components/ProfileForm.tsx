@@ -8,6 +8,8 @@ import Notifications from "./Notifications";
 
 const EMOJIS = ["🔥", "💋", "🖤", "🌹", "🍒", "😈", "👑", "🌙", "⚡", "🥀", "💫", "🐺"];
 
+const CODES_VISIBLES = false;
+
 export default function ProfileForm({
   coupleId,
   couple,
@@ -312,6 +314,8 @@ export default function ProfileForm({
         styleInitial={moi.notif_style ?? "discret"}
       />
 
+      {/* Codes galerie / journal : masqués (galerie fermée, journal sans code). */}
+      {CODES_VISIBLES && (<>
       {/* ---------------------------------------------------- GALERIE */}
       <section className="carte space-y-3 p-5">
         <h2 className="font-display text-xl">Code de la galerie</h2>
@@ -375,6 +379,7 @@ export default function ProfileForm({
           {pinJournalPose ? "✓ Un code est actuellement défini." : "Aucun code défini pour l'instant."}
         </p>
       </section>
+      </>)}
 
       <button
         onClick={deconnexion}

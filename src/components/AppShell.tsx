@@ -10,10 +10,10 @@ import { createClient } from "@/lib/supabase/client";
    mais n'apparaissent pas dans la barre — en attendant d'être vraiment
    développés. Pour les rendre visibles : retirer `masque: true`. */
 const ONGLETS = [
-  { href: "/chat", label: "Nous", icone: "bulle", accent: "var(--color-bordeaux-vif)", halo: "rgba(196,53,99,0.28)" },
-  { href: "/galerie", label: "Galerie", icone: "image", accent: "var(--color-amethyste)", halo: "rgba(168,107,216,0.26)" },
-  { href: "/intime", label: "Intime", icone: "flamme", accent: "var(--color-fuchsia)", halo: "rgba(255,77,141,0.26)" },
-  { href: "/jeux", label: "Jeux", icone: "de", accent: "var(--color-ambre)", halo: "rgba(245,166,91,0.22)" },
+  { href: "/chat", label: "Nous", icone: "bulle", accent: "var(--color-bordeaux-vif)", halo: "rgba(196,53,99,0.28)", masque: true },
+  { href: "/galerie", label: "Galerie", icone: "image", accent: "var(--color-amethyste)", halo: "rgba(168,107,216,0.26)", masque: true },
+  { href: "/intime", label: "Intime", icone: "flamme", accent: "var(--color-fuchsia)", halo: "rgba(255,77,141,0.26)", masque: true },
+  { href: "/jeux", label: "Jeux", icone: "de", accent: "var(--color-ambre)", halo: "rgba(245,166,91,0.22)", masque: true },
   { href: "/idees", label: "Idées", icone: "etincelle", accent: "var(--color-cyan)", halo: "rgba(91,214,232,0.20)", masque: true },
   { href: "/journal", label: "Journal", icone: "plume", accent: "var(--color-menthe)", halo: "rgba(61,214,160,0.20)" },
   { href: "/profil", label: "Profil", icone: "profil", accent: "var(--color-orrose)", halo: "rgba(240,188,168,0.18)" },
@@ -21,6 +21,10 @@ const ONGLETS = [
 
 type Onglet = (typeof ONGLETS)[number];
 const VISIBLES = ONGLETS.filter((o) => !("masque" in o && o.masque)) as readonly Onglet[];
+
+/* Alerte affichée une fois par ouverture de l'app (mémorisée pour la
+   séance : on ne la revoit pas à chaque changement d'onglet). */
+const CLE_ALERTE = "myxapp-alerte-vue";
 
 function Icone({ nom, actif }: { nom: string; actif: boolean }) {
   const commun = {
@@ -98,6 +102,25 @@ export default function AppShell({
   const chemin = usePathname();
   const clavier = useClavier();
   const [saisie, setSaisie] = useState(false);
+  const [alerte, setAlerte] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(CLE_ALERTE)) return;
+    } catch {
+      /* stockage indisponible : on affiche quand même */
+    }
+    setAlerte(true);
+  }, []);
+
+  function fermerAlerte() {
+    try {
+      sessionStorage.setItem(CLE_ALERTE, "1");
+    } catch {
+      /* tant pis */
+    }
+    setAlerte(false);
+  }
 
   /* Second signal, plus fiable qu'un calcul de viewport sur iOS :
      des qu'un champ texte a le focus, on considere que le clavier est la. */
@@ -236,6 +259,29 @@ export default function AppShell({
         </ul>
         <div className="h-[env(safe-area-inset-bottom)]" />
       </nav>
+      )}
+
+      {alerte && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="alerte-titre"
+          className="fixed inset-0 z-50 grid place-items-center bg-nuit/80 px-6 backdrop-blur-sm"
+        >
+          <div className="carte w-full max-w-sm space-y-4 p-6 text-center">
+            <span className="text-4xl">⚠️</span>
+            <h2 id="alerte-titre" className="font-display text-2xl">
+              Cette application ne sert plus à rien
+            </h2>
+            <p className="text-sm leading-relaxed text-brume">
+              Seuls le profil et le journal restent ouverts. Rien n&apos;a été
+              effacé : le reste est simplement masqué.
+            </p>
+            <button className="btn w-full" onClick={fermerAlerte}>
+              J&apos;ai compris
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

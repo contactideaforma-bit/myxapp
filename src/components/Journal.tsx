@@ -312,8 +312,10 @@ export default function Journal({
     };
   }, [verifierSession, charger]);
 
+  /* Le journal n'a plus de code : plus de session qui expire. */
   function armerMinuterie() {
     if (minuterieRef.current) clearTimeout(minuterieRef.current);
+    return;
     minuterieRef.current = setTimeout(() => {
       setOuvert(false);
       fermerTout();
@@ -533,8 +535,9 @@ export default function Journal({
     );
   }
 
-  /* ---------------------------------------------- Aucun code */
-  if (!pinPose) {
+  /* ---------------------------------------------- Aucun code
+     (désactivé : le journal s'ouvre désormais sans code) */
+  if (false && !pinPose) {
     return (
       <div className="journal grid place-items-center px-8 text-center">
         <div className="mx-auto max-w-xs space-y-3">
@@ -630,7 +633,6 @@ export default function Journal({
               <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
             </svg>
           </button>
-          <button onClick={verrouiller} className="j-btn j-btn-doux h-10 w-10 !p-0" aria-label="Verrouiller">🔒</button>
           <button onClick={nouvelleEntree} className="j-btn h-10 !px-4 text-sm">
             <span className="text-base leading-none">＋</span> Écrire
           </button>

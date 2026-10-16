@@ -39,8 +39,19 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Rubriques masquées : plus joignables, même en tapant l'adresse.
+  // Les données restent en base, intactes.
+  if (user && RUBRIQUES_MASQUEES.some((r) => path === r || path.startsWith(r + "/"))) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/journal";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   return response;
 }
+
+const RUBRIQUES_MASQUEES = ["/chat", "/galerie", "/intime", "/jeux", "/idees", "/kamasutra"];
 
 export const config = {
   matcher: [
