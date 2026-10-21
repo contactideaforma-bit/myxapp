@@ -8,6 +8,8 @@ import ImageMessage from "./ImageMessage";
 import VideoMessage from "@/components/VideoMessage";
 import StickerMessage from "@/components/StickerMessage";
 import PanicOverlay from "./PanicOverlay";
+import PluieManel, { MOTIF_MYMY } from "./PluieManel";
+import ExplosionEtron, { MOTIF_MANEL } from "./ExplosionEtron";
 import GifPicker from "./GifPicker";
 import AudioBubble from "./AudioBubble";
 import Humeur from "./Humeur";
@@ -109,6 +111,18 @@ export default function ChatRoom({
   const [envoi, setEnvoi] = useState(false);
   const [erreurMedia, setErreurMedia] = useState<string | null>(null);
   const [discret, setDiscret] = useState(false);
+  /* Easter egg « mymy » : 0 = pas de pluie, sinon horodatage du déclenchement
+     (sert de key pour relancer une pluie neuve à chaque fois). */
+  const [pluie, setPluie] = useState(0);
+  const finPluie = useCallback(() => setPluie(0), []);
+  /* Easter egg « manel » : explosion d'étrons, même mécanique. */
+  const [explosion, setExplosion] = useState(0);
+  const finExplosion = useCallback(() => setExplosion(0), []);
+  function declencherEasterEggs(corps: string) {
+    const t = Date.now();
+    if (MOTIF_MYMY.test(corps)) setPluie(t);
+    if (MOTIF_MANEL.test(corps)) setExplosion(t);
+  }
   const [maintenant, setMaintenant] = useState(() => Date.now());
 
   const [actionSur, setActionSur] = useState<Message | null>(null);
@@ -229,6 +243,7 @@ export default function ChatRoom({
             const m = payload.new as Message;
             setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
             if (m.sender_id !== userId) {
+              if (m.kind === "text" && m.body) declencherEasterEggs(m.body);
               setPartenaireEcrit(false);
               void supabase.rpc("mark_read").then(() => {});
             }
@@ -453,6 +468,7 @@ export default function ChatRoom({
     const cible = repondA;
     const provisoire = `local-${Date.now()}`;
     const expiration = calculerExpiration();
+    declencherEasterEggs(corps);
 
     // La bulle apparait tout de suite : plus aucune latence ressentie.
     setMessages((prev) => [
@@ -784,6 +800,8 @@ export default function ChatRoom({
 
   return (
     <div className="flex h-full flex-col">
+      {pluie > 0 && <PluieManel key={pluie} onFin={finPluie} />}
+      {explosion > 0 && <ExplosionEtron key={explosion} onFin={finExplosion} />}
       {/* EN-TÊTE */}
       <header className="flex shrink-0 items-center gap-3 border-b border-bord bg-velours/80 px-4 py-3 backdrop-blur">
         <div className="relative">
