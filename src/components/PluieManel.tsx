@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 
 /**
- * EASTER EGG — « mymy »
- * Dès qu'un message contient « mymy », une pluie de « manel » multicolores
- * et de cafards 🪳 recouvre tout l'écran pendant quelques secondes.
+ * EASTER EGGS — pluie plein écran
+ * « mymy »  → pluie de « manel » multicolores et de cafards 🪳 (défaut).
+ * « sam » / « samir » → pluie de « samnel💩 » et de canards 🦆.
+ * Le mot-clé peut être seul ou noyé dans une phrase, majuscules ou pas.
  * Purement décoratif : ne bloque ni le fil ni la saisie (pointer-events: none).
  */
 
@@ -17,6 +18,8 @@ const TEINTES = [
 ];
 
 export const MOTIF_MYMY = /mymy/i;
+/* « sam » en mot entier (pour ne pas réagir à « samedi »), « samir » partout. */
+export const MOTIF_SAM = /samir|\bsam\b/i;
 
 type Goutte = {
   id: number;
@@ -43,7 +46,17 @@ function tirer(): Goutte[] {
 }
 
 /** Monté avec une `key` qui change à chaque déclenchement : la pluie repart de zéro. */
-export default function PluieManel({ onFin }: { onFin: () => void }) {
+export default function PluieManel({
+  onFin,
+  mot = "manel",
+  emoji = "🪳",
+}: {
+  onFin: () => void;
+  /** Texte qui tombe (défaut : « manel »). */
+  mot?: string;
+  /** Emoji mêlé aux mots (défaut : cafard). */
+  emoji?: string;
+}) {
   const gouttes = useMemo(() => tirer(), []);
   const [visible, setVisible] = useState(true);
 
@@ -75,7 +88,7 @@ export default function PluieManel({ onFin }: { onFin: () => void }) {
             ["--manel-rot" as string]: `${g.rotation}deg`,
           }}
         >
-          {g.cafard ? "🪳" : "manel"}
+          {g.cafard ? emoji : mot}
         </span>
       ))}
     </div>

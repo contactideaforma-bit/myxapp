@@ -8,7 +8,7 @@ import ImageMessage from "./ImageMessage";
 import VideoMessage from "@/components/VideoMessage";
 import StickerMessage from "@/components/StickerMessage";
 import PanicOverlay from "./PanicOverlay";
-import PluieManel, { MOTIF_MYMY } from "./PluieManel";
+import PluieManel, { MOTIF_MYMY, MOTIF_SAM } from "./PluieManel";
 import ExplosionEtron, { MOTIF_MANEL } from "./ExplosionEtron";
 import GifPicker from "./GifPicker";
 import AudioBubble from "./AudioBubble";
@@ -118,10 +118,15 @@ export default function ChatRoom({
   /* Easter egg « manel » : explosion d'étrons, même mécanique. */
   const [explosion, setExplosion] = useState(0);
   const finExplosion = useCallback(() => setExplosion(0), []);
+  /* Easter egg « sam » / « samir » : pluie de « samnel💩 » et de canards. */
+  const [pluieSam, setPluieSam] = useState(0);
+  const finPluieSam = useCallback(() => setPluieSam(0), []);
+  /* Les mots-clés sont cherchés n'importe où dans la phrase (regex sans ancre). */
   function declencherEasterEggs(corps: string) {
     const t = Date.now();
     if (MOTIF_MYMY.test(corps)) setPluie(t);
     if (MOTIF_MANEL.test(corps)) setExplosion(t);
+    if (MOTIF_SAM.test(corps)) setPluieSam(t);
   }
   const [maintenant, setMaintenant] = useState(() => Date.now());
 
@@ -802,6 +807,7 @@ export default function ChatRoom({
     <div className="flex h-full flex-col">
       {pluie > 0 && <PluieManel key={pluie} onFin={finPluie} />}
       {explosion > 0 && <ExplosionEtron key={explosion} onFin={finExplosion} />}
+      {pluieSam > 0 && <PluieManel key={`sam-${pluieSam}`} mot="samnel💩" emoji="🦆" onFin={finPluieSam} />}
       {/* EN-TÊTE */}
       <header className="flex shrink-0 items-center gap-3 border-b border-bord bg-velours/80 px-4 py-3 backdrop-blur">
         <div className="relative">
