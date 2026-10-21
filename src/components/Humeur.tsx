@@ -69,14 +69,20 @@ export default function Humeur({
 
   return (
     <>
+      {/* Même gabarit que les autres boutons de l'en-tête. Tant que personne
+          n'a rien dit : une bougie. Sinon : l'humeur de l'autre (bordure à sa
+          couleur), et la mienne en petit à côté si je l'ai posée. */}
       <button
         onClick={() => setOuvert(true)}
-        className="flex shrink-0 items-center gap-1 rounded-full border border-bord px-2.5 py-1.5 text-xs transition"
+        className="flex shrink-0 items-center gap-1 rounded-lg border border-bord px-2.5 py-1.5 text-xs leading-none text-brume transition hover:border-bordeaux-vif"
         style={nivSien ? { borderColor: nivSien.couleur } : undefined}
         title="L'humeur du soir"
+        aria-label="L'humeur du soir"
       >
-        <span className="text-sm">{nivSien?.emoji ?? "·"}</span>
-        <span className="text-[10px] text-brume">{nivMien?.emoji ?? "?"}</span>
+        <span className="text-sm leading-none">{nivSien?.emoji ?? nivMien?.emoji ?? "🕯️"}</span>
+        {nivSien && nivMien && (
+          <span className="text-[10px] leading-none opacity-70">{nivMien.emoji}</span>
+        )}
       </button>
 
       {ouvert && (
