@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Portail from "./Portail";
 import { createClient } from "@/lib/supabase/client";
 
 type Ligne = { user_id: string; niveau: number; note: string | null; updated_at: string };
@@ -86,6 +87,7 @@ export default function Humeur({
       </button>
 
       {ouvert && (
+        <Portail>
         <div
           className="voile voile-bas"
           onClick={() => setOuvert(false)}
@@ -164,6 +166,7 @@ export default function Humeur({
             </button>
           </div>
         </div>
+        </Portail>
       )}
     </>
   );
