@@ -122,12 +122,35 @@ export default function ChatRoom({
   const [pluieSam, setPluieSam] = useState(0);
   const finPluieSam = useCallback(() => setPluieSam(0), []);
   /* Les mots-clés sont cherchés n'importe où dans la phrase (regex sans ancre). */
-  function declencherEasterEggs(corps: string) {
+  const declencherEasterEggs = useCallback((corps: string) => {
     const t = Date.now();
     if (MOTIF_MYMY.test(corps)) setPluie(t);
     if (MOTIF_MANEL.test(corps)) setExplosion(t);
     if (MOTIF_SAM.test(corps)) setPluieSam(t);
-  }
+  }, []);
+  /* Côté receveur, l'effet se joue au moment où il DÉCOUVRE le message :
+     à l'arrivée en direct si le fil est ouvert, sinon à l'ouverture du fil
+     (messages du partenaire encore non lus). Chaque message n'est scanné
+     qu'une fois, pour ne pas rejouer l'effet à chaque rechargement. */
+  const scannesRef = useRef<Set<string>>(new Set());
+  const scannerNonLus = useCallback(
+    (liste: Message[]) => {
+      const corps: string[] = [];
+      for (const m of liste) {
+        if (m.sender_id === userId || m.kind !== "text" || !m.body || m.read_at) continue;
+        if (scannesRef.current.has(m.id)) continue;
+        scannesRef.current.add(m.id);
+        corps.push(m.body);
+      }
+      if (corps.length) declencherEasterEggs(corps.join("\n"));
+    },
+    [userId, declencherEasterEggs]
+  );
+  useEffect(() => {
+    scannerNonLus(messagesInitiaux);
+    // Uniquement à l'ouverture du fil.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [maintenant, setMaintenant] = useState(() => Date.now());
 
   const [actionSur, setActionSur] = useState<Message | null>(null);
@@ -201,9 +224,10 @@ export default function ChatRoom({
         const enVol = prev.filter((m) => m.enAttente);
         return [...[...(data as Message[])].reverse(), ...enVol];
       });
+      scannerNonLus(data as Message[]);
     }
     if (r) setReactions(r as Reaction[]);
-  }, [supabase, coupleId]);
+  }, [supabase, coupleId, scannerNonLus]);
 
   const rafraichirReactions = useCallback(async () => {
     const { data } = await supabase.from("reactions").select("message_id, user_id, emoji");
@@ -220,8 +244,8 @@ export default function ChatRoom({
       canal?.track({ id: userId, visible: document.visibilityState === "visible" });
       // Au retour au premier plan, on rattrape ce qu'on aurait manqué.
       if (document.visibilityState === "visible") {
-        void supabase.rpc("mark_read").then(() => {});
-        rafraichir();
+        // Recharger AVANT de marquer lu : les non-lus déclenchent leurs easter eggs.
+        void rafraichir().then(() => supabase.rpc("mark_read"));
       }
     };
 
@@ -248,7 +272,7 @@ export default function ChatRoom({
             const m = payload.new as Message;
             setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
             if (m.sender_id !== userId) {
-              if (m.kind === "text" && m.body) declencherEasterEggs(m.body);
+              scannerNonLus([m]);
               setPartenaireEcrit(false);
               void supabase.rpc("mark_read").then(() => {});
             }
