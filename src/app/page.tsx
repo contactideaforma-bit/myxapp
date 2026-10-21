@@ -18,5 +18,5 @@ export default async function Home() {
     .maybeSingle();
 
   if (!couple || !couple.member_b) redirect("/pair");
-  redirect("/journal");
+  redirect("/chat");
 }

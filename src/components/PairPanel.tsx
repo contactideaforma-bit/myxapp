@@ -30,7 +30,7 @@ export default function PairPanel() {
     } else {
       const c = (Array.isArray(data) ? data[0] : data) as Couple;
       setCouple(c);
-      if (c?.member_b) router.replace("/journal");
+      if (c?.member_b) router.replace("/chat");
     }
     setChargement(false);
   }, [supabase, router]);
@@ -48,7 +48,7 @@ export default function PairPanel() {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "couples", filter: `id=eq.${couple.id}` },
         (payload) => {
-          if ((payload.new as Couple).member_b) router.replace("/journal");
+          if ((payload.new as Couple).member_b) router.replace("/chat");
         }
       )
       .subscribe();
@@ -72,7 +72,7 @@ export default function PairPanel() {
       setErreur(cle ? MESSAGES_ERREUR[cle] : error.message);
       return;
     }
-    router.replace("/journal");
+    router.replace("/chat");
     router.refresh();
   }
 

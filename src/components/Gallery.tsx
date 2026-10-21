@@ -17,7 +17,6 @@ type Item = {
   created_at: string;
 };
 
-const DUREE_SESSION_MS = 15 * 60 * 1000;
 
 export default function Gallery({
   coupleId,
@@ -118,12 +117,7 @@ export default function Gallery({
 
   /* ------------------------------------------------ Verrouillage auto */
   function armerMinuterie() {
-    if (minuterieRef.current) clearTimeout(minuterieRef.current);
-    minuterieRef.current = setTimeout(() => {
-      setOuvert(false);
-      setItems([]);
-      setUrls({});
-    }, DUREE_SESSION_MS);
+    /* La galerie n'a plus de code : plus de session qui expire. */
   }
 
   useEffect(() => {
@@ -379,8 +373,9 @@ export default function Gallery({
     );
   }
 
-  /* ---------------------------------------------- Aucun code defini */
-  if (!pinPose) {
+  /* ---------------------------------------------- Aucun code defini
+     (désactivé : la galerie s'ouvre désormais sans code) */
+  if (false && !pinPose) {
     return (
       <div className="mx-auto grid h-full max-w-md place-items-center px-8 text-center">
         <div className="space-y-3">
@@ -459,7 +454,7 @@ export default function Gallery({
         <div className="flex-1">
           <h1 className="font-display text-xl leading-tight">Galerie</h1>
           <p className="text-xs text-brume">
-            {items.length} élément{items.length > 1 ? "s" : ""} · session de 15 min
+            {items.length} élément{items.length > 1 ? "s" : ""}
           </p>
         </div>
         <button
@@ -468,12 +463,6 @@ export default function Gallery({
           className="rounded-lg border border-bord px-3 py-1.5 text-xs text-orrose transition hover:border-bordeaux-vif"
         >
           + Ajouter
-        </button>
-        <button
-          onClick={verrouiller}
-          className="rounded-lg border border-bord px-3 py-1.5 text-xs text-brume transition hover:border-bordeaux-vif"
-        >
-          🔒
         </button>
       </header>
 
