@@ -10,6 +10,7 @@ import StickerMessage from "@/components/StickerMessage";
 import PanicOverlay from "./PanicOverlay";
 import PluieManel, { MOTIF_MYMY, MOTIF_SAM } from "./PluieManel";
 import ExplosionEtron, { MOTIF_MANEL } from "./ExplosionEtron";
+import StickerSurprise, { MOTIF_MYRIAM } from "./StickerSurprise";
 import GifPicker from "./GifPicker";
 import AudioBubble from "./AudioBubble";
 import Humeur from "./Humeur";
@@ -121,12 +122,16 @@ export default function ChatRoom({
   /* Easter egg « sam » / « samir » : pluie de « samnel💩 » et de canards. */
   const [pluieSam, setPluieSam] = useState(0);
   const finPluieSam = useCallback(() => setPluieSam(0), []);
+  /* Easter egg « myriam » : un sticker de la bibliothèque surgit en grand au centre. */
+  const [surprise, setSurprise] = useState(0);
+  const finSurprise = useCallback(() => setSurprise(0), []);
   /* Les mots-clés sont cherchés n'importe où dans la phrase (regex sans ancre). */
   const declencherEasterEggs = useCallback((corps: string) => {
     const t = Date.now();
     if (MOTIF_MYMY.test(corps)) setPluie(t);
     if (MOTIF_MANEL.test(corps)) setExplosion(t);
     if (MOTIF_SAM.test(corps)) setPluieSam(t);
+    if (MOTIF_MYRIAM.test(corps)) setSurprise(t);
   }, []);
   /* Côté receveur, l'effet se joue au moment où il DÉCOUVRE le message :
      à l'arrivée en direct si le fil est ouvert, sinon à l'ouverture du fil
@@ -832,6 +837,7 @@ export default function ChatRoom({
       {pluie > 0 && <PluieManel key={pluie} onFin={finPluie} />}
       {explosion > 0 && <ExplosionEtron key={explosion} onFin={finExplosion} />}
       {pluieSam > 0 && <PluieManel key={`sam-${pluieSam}`} mot="samnel💩" emoji="🦆" onFin={finPluieSam} />}
+      {surprise > 0 && <StickerSurprise key={`myriam-${surprise}`} coupleId={coupleId} onFin={finSurprise} />}
       {/* EN-TÊTE */}
       <header className="flex shrink-0 items-center gap-3 border-b border-bord bg-velours/80 px-4 py-3 backdrop-blur">
         <div className="relative">

@@ -582,3 +582,30 @@ button, [role="button"] {
     opacity: 0;
   }
 }
+
+/* ---------- Easter egg « myriam » : sticker surprise plein centre ---------- */
+.sticker-surprise {
+  will-change: transform, opacity;
+  filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.55));
+  animation: sticker-surgit 0.55s cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+.sticker-surprise-sortie {
+  animation: sticker-disparait 0.5s ease-in both;
+}
+.sticker-surprise-media {
+  width: auto;
+  height: auto;
+  max-width: 86vw;
+  max-height: 62vh;
+  object-fit: contain;
+  border-radius: 1.5rem;
+}
+@keyframes sticker-surgit {
+  0%   { transform: scale(0.2) rotate(-12deg); opacity: 0; }
+  60%  { transform: scale(1.12) rotate(3deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+@keyframes sticker-disparait {
+  0%   { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.6) translateY(12vh); opacity: 0; }
+}
