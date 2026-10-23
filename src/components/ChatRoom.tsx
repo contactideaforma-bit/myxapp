@@ -503,6 +503,10 @@ export default function ChatRoom({
     const provisoire = `local-${Date.now()}`;
     const expiration = calculerExpiration();
     declencherEasterEggs(corps);
+    /* « myriam » : on ferme le clavier tout de suite, sinon l'overlay fixed
+       est cadré sur la fenêtre réduite par le clavier et le sticker sort du champ. */
+    const surpriseEnCours = MOTIF_MYRIAM.test(corps);
+    if (surpriseEnCours) zoneRef.current?.blur();
 
     // La bulle apparait tout de suite : plus aucune latence ressentie.
     setMessages((prev) => [
@@ -552,7 +556,7 @@ export default function ChatRoom({
       setMessages((prev) => prev.filter((m) => m.id !== provisoire));
       setTexte(corps);
     }
-    zoneRef.current?.focus();
+    if (!surpriseEnCours) zoneRef.current?.focus();
   }
 
   async function envoyerImage(brut: File) {
